@@ -258,9 +258,13 @@ grant select, insert, update on public.time_clock to authenticated;
 drop policy if exists "time_clock admin all" on public.time_clock;
 create policy "time_clock admin all" on public.time_clock for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
+-- Employees READ their own sessions. Their punches go through
+-- /api/time-clock/self (service role, geofenced), so they never write this
+-- table directly — which is what stops someone editing their own hours or
+-- clocking a coworker in. Admins (the Time Clock board) do all of that.
 drop policy if exists "time_clock own" on public.time_clock;
-create policy "time_clock own" on public.time_clock for all to authenticated
-  using (employee_id = auth.uid()) with check (employee_id = auth.uid());
+create policy "time_clock own" on public.time_clock for select to authenticated
+  using (employee_id = auth.uid());
 grant delete on public.time_clock to authenticated;  -- admins can remove a bogus session
 
 -- Time-clock adjustment requests: an employee who forgot to clock in/out asks
@@ -505,11 +509,39 @@ create policy "admins_update_orders"          on public.orders
   for update to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy "admins_delete_orders"          on public.orders
   for delete to authenticated using (public.is_admin());
--- Drivers need to be able to mark orders delivered. This is broad but
--- column-level restrictions aren't worth the complexity for this app.
+-- Drivers need to be able to mark orders delivered. The row-level policy
+-- lets field staff at it; the trigger below keeps everyone but an admin to
+-- the delivery columns, because RLS gates rows, not columns — without it any
+-- signed-in driver could rewrite an invoice number from the browser.
 create policy "auth_users_update_for_delivery" on public.orders
   for update to authenticated
-  using (auth.uid() is not null) with check (auth.uid() is not null);
+  using (public.has_role(array['driver', 'mechanic', 'office', 'labor']))
+  with check (public.has_role(array['driver', 'mechanic', 'office', 'labor']));
+
+-- Only an admin changes an order beyond its delivery fields (invoice number,
+-- invoice PDF, billed flag, customer, totals, who it's for). The service role
+-- is let through because the admin-only API routes already checked the role.
+create or replace function public.guard_order_columns()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  delivery_cols text[] := array[
+    'status', 'loaded_at', 'loaded_by', 'loaded_by_name',
+    'delivered', 'delivered_at', 'delivered_by', 'delivered_by_name',
+    'delivery_note', 'signer_name', 'signed_pdf_path', 'updated_at'
+  ];
+begin
+  if auth.uid() is null or current_user = 'service_role' or public.is_admin() then
+    return new;
+  end if;
+  if (to_jsonb(new) - delivery_cols) is distinct from (to_jsonb(old) - delivery_cols) then
+    raise exception 'only an admin can change an order beyond its delivery fields';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists trg_guard_order_columns on public.orders;
+create trigger trg_guard_order_columns before update on public.orders
+  for each row execute function public.guard_order_columns();
 
 -- ---- hours ----
 drop policy if exists "Admins view all hours"        on public.hours;
@@ -526,14 +558,13 @@ create policy "Drivers view own hours"  on public.hours
   for select using (employee_id = auth.uid());
 create policy "Anyone signed in can insert hours" on public.hours
   for insert with check (auth.uid() is not null);
+-- Employees log their own hours; only an admin edits or deletes an entry
+-- (the "Drivers update/delete own hours" policies are dropped above and not
+-- recreated).
 create policy "Admins update any hours" on public.hours
   for update using (public.is_admin());
-create policy "Drivers update own hours" on public.hours
-  for update using (employee_id = auth.uid());
 create policy "Admins delete hours"     on public.hours
   for delete using (public.is_admin());
-create policy "Drivers delete own hours" on public.hours
-  for delete using (employee_id = auth.uid());
 
 -- ---- delivery_log ----
 drop policy if exists "auth_users_view_delivery_log"    on public.delivery_log;
@@ -2047,12 +2078,32 @@ create trigger trg_work_orders_touch before update on public.work_orders
 grant select, insert, update, delete on public.work_orders to authenticated;
 alter table public.work_orders enable row level security;
 
--- Admins + office manage everything (review, edit, approve, invoice).
+-- Admins + office manage tickets (review, edit, approve, invoice). Deleting
+-- one — an invoiced ticket included — is admin only, so the old catch-all
+-- policy is dropped and split by command.
 drop policy if exists "wo office manage" on public.work_orders;
-create policy "wo office manage" on public.work_orders
-  for all to authenticated
+drop policy if exists "wo office read" on public.work_orders;
+create policy "wo office read" on public.work_orders
+  for select to authenticated
+  using (public.is_admin() or public.has_role(array['office']));
+drop policy if exists "wo office insert" on public.work_orders;
+create policy "wo office insert" on public.work_orders
+  for insert to authenticated
+  with check (public.is_admin() or public.has_role(array['office']));
+drop policy if exists "wo office update" on public.work_orders;
+create policy "wo office update" on public.work_orders
+  for update to authenticated
   using (public.is_admin() or public.has_role(array['office']))
   with check (public.is_admin() or public.has_role(array['office']));
+drop policy if exists "wo admin delete" on public.work_orders;
+create policy "wo admin delete" on public.work_orders
+  for delete to authenticated
+  using (public.is_admin());
+-- A crew member may discard a draft they started and never submitted.
+drop policy if exists "wo crew delete own draft" on public.work_orders;
+create policy "wo crew delete own draft" on public.work_orders
+  for delete to authenticated
+  using (submitted_by = auth.uid() and status = 'draft');
 
 -- Crew (driver / contractor crew) create tickets and read/edit their OWN while
 -- still draft or submitted. They can't touch approvals.

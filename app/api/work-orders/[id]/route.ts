@@ -163,10 +163,12 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
     .maybeSingle();
   if (!existing) return NextResponse.json({ ok: false, error: 'not found' }, { status: 404 });
 
+  // Deleting a ticket is admin only — an invoiced ticket is a record. The one
+  // exception is a crew member discarding a draft they never submitted.
   const { data: actor } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-  const isStaff = ['office', 'admin', 'master_admin'].includes(actor?.role || '');
-  if (!isStaff && !(existing.submitted_by === user.id && existing.status === 'draft')) {
-    return NextResponse.json({ ok: false, error: 'only a draft you created can be deleted' }, { status: 403 });
+  const isAdmin = ['admin', 'master_admin'].includes(actor?.role || '');
+  if (!isAdmin && !(existing.submitted_by === user.id && existing.status === 'draft')) {
+    return NextResponse.json({ ok: false, error: 'only an admin can delete a ticket (or you, a draft you created)' }, { status: 403 });
   }
 
   const { error } = await supabase.from('work_orders').delete().eq('id', params.id);

@@ -63,6 +63,26 @@ When adding anything to the approval chain:
 - Nobody approves a ticket they submitted; a contractor only touches their own
   crews' tickets.
 
+## Admin-only boundaries (owner's rules — keep them)
+
+"Admin" means `admin` or `master_admin` (`is_admin()`); `office` is not admin.
+Each rule is enforced server-side (route check and/or RLS), never only in UI:
+
+- **Invoices**: edit, void, re-attach PDFs — admin-only QuickBooks routes.
+  Field staff may update an `orders` row only in its delivery columns
+  (`guard_order_columns` trigger); everything else on an order is admin.
+- **Tickets**: office reviews, edits, approves, invoices; **deleting** a
+  ticket is admin only (plus a crew member's own unsubmitted draft).
+- **Hours / time clock**: employees clock themselves via
+  `/api/time-clock/self` and may log `hours` rows; only an admin edits or
+  deletes hours, edits or deletes clock sessions, or clocks someone else in
+  or out (`time_clock own` is select-only).
+- **Users**: adding users, setting roles, resetting passwords — admin routes.
+  The one exception is a hauling company adding its own drivers via
+  `/api/haulers/drivers`. Public sign-up must stay OFF in Supabase Auth.
+- **Money**: customer rates and hauler pay rates are office + admin; haulers
+  never read `job_orders`. There is no employee pay data in this app.
+
 ## Money is recomputed, never trusted
 
 Hours come from `start_at`/`stop_at` plus travel and down time; the amount is
