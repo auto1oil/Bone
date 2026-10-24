@@ -1,0 +1,19 @@
+{
+  "name": "Bone Haul Tickets",
+  "short_name": "Bone",
+  "description": "Field tickets, approvals, and invoicing for hauling crews.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#0C0C0D",
+  "icons": [
+    {
+      "src": "/brand/bone-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
