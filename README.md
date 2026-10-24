@@ -110,7 +110,7 @@ Import the repo, then set the environment variables from
 | `VAPID_SUBJECT` | `mailto:` address for push |
 | `QUICKBOOKS_CLIENT_ID` / `QUICKBOOKS_CLIENT_SECRET` | From your Intuit app |
 | `QUICKBOOKS_REDIRECT_URI` | `<your URL>/api/quickbooks/callback` |
-| `QUICKBOOKS_ENV` | `sandbox` or `production` |
+| `QUICKBOOKS_ENVIRONMENT` | `sandbox` or `production` |
 
 ### 4 — QuickBooks
 
