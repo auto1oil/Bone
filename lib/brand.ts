@@ -31,16 +31,15 @@ export const BRAND = {
   // The office email printed under the address and shown on the legal pages.
   officeEmail: 'bonedispatch@gmail.com',
 
-  // TODO(identity): the production domain, without protocol. Used as the
-  // fallback site URL and for the default web-push contact address. Set it
-  // once the Vercel project has its domain.
-  domain: 'bone.vercel.app',
+  // The production domain, without protocol. Used as the fallback site URL
+  // and for the default web-push contact address.
+  domain: 'bone-one.vercel.app',
 
   // TODO(identity): staff email domain. A customer login whose email ends in
   // this is flagged on the admin customers page as probable staff who signed
   // up the wrong way. The office uses a gmail address, so this stays a
   // placeholder until staff have a company domain.
-  staffEmailDomain: 'bone.vercel.app',
+  staffEmailDomain: 'bone-one.vercel.app',
 } as const;
 
 export const SITE_URL_FALLBACK = `https://${BRAND.domain}`;

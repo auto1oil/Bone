@@ -104,7 +104,7 @@ Import the repo, then set the environment variables from
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase Project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service-role key (server only) |
-| `NEXT_PUBLIC_SITE_URL` | Your deployed URL, e.g. `https://bone.vercel.app` |
+| `NEXT_PUBLIC_SITE_URL` | Your deployed URL, e.g. `https://bone-one.vercel.app` |
 | `CRON_SECRET` | Any long random string — guards the cron routes |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web-push keys (`npx web-push generate-vapid-keys`) |
 | `VAPID_SUBJECT` | `mailto:` address for push |
