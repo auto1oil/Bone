@@ -37,6 +37,11 @@ export default function WorkOrderSetupPage() {
   const [factorUrl, setFactorUrl] = useState('');
   const [factorKey, setFactorKey] = useState('');
   const [savedFactor, setSavedFactor] = useState(false);
+  // The connection test always checks the SAVED values, so the button waits
+  // until an endpoint is on file.
+  const [factorUrlSaved, setFactorUrlSaved] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -49,6 +54,7 @@ export default function WorkOrderSetupPage() {
       setItemName(m.get('work_order_qb_item_name') || '');
       setFactorUrl(m.get('factoring_webhook_url') || '');
       setFactorKey(m.get('factoring_api_key') || '');
+      setFactorUrlSaved(!!(m.get('factoring_webhook_url') || '').trim());
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: me } = await supabase.from('profiles').select('role').eq('id', user.id).single();
@@ -95,8 +101,24 @@ export default function WorkOrderSetupPage() {
       { key: 'factoring_webhook_url', value: factorUrl.trim() },
       { key: 'factoring_api_key', value: factorKey.trim() },
     ], { onConflict: 'key' });
+    setFactorUrlSaved(!!factorUrl.trim());
+    setTestResult(null);
     setSavedFactor(true);
     setTimeout(() => setSavedFactor(false), 1500);
+  }
+
+  async function testFactoring() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/factoring/test', { method: 'POST', cache: 'no-store' });
+      const json = (await res.json()) as { ok?: boolean; message?: string };
+      setTestResult({ ok: !!json.ok, message: json.message || (json.ok ? 'Connected.' : 'The test did not answer.') });
+    } catch (err) {
+      setTestResult({ ok: false, message: `Couldn’t run the test: ${err instanceof Error ? err.message : 'network error'}` });
+    } finally {
+      setTesting(false);
+    }
   }
 
   async function addRate() {
@@ -172,10 +194,26 @@ export default function WorkOrderSetupPage() {
               type="password" autoComplete="off" className={`${input} w-full block mt-1`} />
           </label>
         </div>
-        <button onClick={saveFactoring} className="mt-3 px-3 py-1.5 text-sm bg-brand-700 text-white rounded-md hover:bg-brand-900 font-medium">
-          Save
-        </button>
-        {savedFactor && <p className="text-xs text-emerald-700 mt-1">Saved ✓</p>}
+        <div className="mt-3 flex items-center gap-2 flex-wrap">
+          <button onClick={saveFactoring} className="px-3 py-1.5 text-sm bg-brand-700 text-white rounded-md hover:bg-brand-900 font-medium">
+            Save
+          </button>
+          <button
+            onClick={testFactoring}
+            disabled={!factorUrlSaved || testing}
+            title={factorUrlSaved ? 'Checks the saved endpoint and key against Auto 1 Funding' : 'Save an endpoint first'}
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {testing ? 'Testing…' : 'Test connection'}
+          </button>
+          {savedFactor && <span className="text-xs text-emerald-700">Saved ✓</span>}
+        </div>
+        <p className="text-[11px] text-gray-500 mt-1">The test checks what&apos;s saved — Save first, then test.</p>
+        {testResult && (
+          <p className={`text-sm mt-2 ${testResult.ok ? 'text-emerald-700' : 'text-red-600'}`}>
+            {testResult.ok ? '✓' : '✗'} {testResult.message}
+          </p>
+        )}
       </div>
       )}
 

@@ -90,9 +90,10 @@ async function postToFactoring(
   url: string,
   apiKey: string,
   payload: Record<string, unknown>,
+  timeoutMs = 15_000,
 ): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15_000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, {
       method: 'POST',
@@ -222,6 +223,52 @@ export async function checkFactoringLink(
       error: err instanceof Error ? err.message : 'could not reach the factoring app',
     };
   }
+}
+
+// "Are we connected?" — checks the SAVED endpoint, key and source against the
+// funding app without creating anything there. link-status only reads, so a
+// made-up hauler id is harmless: a working connection answers status "none".
+// Every outcome is one plain sentence the admin can act on.
+export async function testFactoringConnection(
+  db: SupabaseClient,
+): Promise<{ ok: boolean; message: string }> {
+  const config = await getFactoringConfig(db);
+  if (!config) return { ok: false, message: 'No endpoint saved yet — paste the tickets address and Save.' };
+  if (!config.apiKey) return { ok: false, message: 'No API key saved yet — paste the key and Save.' };
+  const url = siblingEndpoint(config.url, 'link-status');
+  if (!url) return { ok: false, message: 'The endpoint should end in /tickets.' };
+
+  let res: Response;
+  try {
+    res = await postToFactoring(url, config.apiKey, {
+      source: BRAND.slug,
+      hauler_id: '00000000-0000-0000-0000-000000000000',
+    }, 12_000);
+  } catch (err) {
+    const why = err instanceof Error && err.name === 'AbortError'
+      ? 'timed out after 12 seconds'
+      : (err instanceof Error ? err.message : 'network error');
+    return { ok: false, message: `Couldn’t reach Auto 1 Funding: ${why}.` };
+  }
+
+  const body = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; message?: string } | null;
+  const detail = body?.error || body?.message || '';
+  if (res.status === 200 && body?.ok === true) {
+    return { ok: true, message: 'Connected — Auto 1 Funding accepted this app’s key.' };
+  }
+  if (res.status === 401) {
+    return { ok: false, message: 'Auto 1 Funding refused the key. Check it matches this app’s key setting in the funding app, and that the funding app was redeployed after adding it.' };
+  }
+  if (res.status === 400) {
+    return { ok: false, message: `Auto 1 Funding answered 400${detail ? ` — ${detail}` : ''}. The key may belong to another app (the source and key must match).` };
+  }
+  if (res.status === 503) {
+    return { ok: false, message: 'Auto 1 Funding has no partner keys set — add the key there and redeploy.' };
+  }
+  if (res.status === 404) {
+    return { ok: false, message: 'Nothing at that address — check the endpoint.' };
+  }
+  return { ok: false, message: `Auto 1 Funding answered ${res.status}${detail ? ` — ${detail}` : ''}.` };
 }
 
 export type BillOfSale = {
