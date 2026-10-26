@@ -271,6 +271,135 @@ export async function testFactoringConnection(
   return { ok: false, message: `Auto 1 Funding answered ${res.status}${detail ? ` — ${detail}` : ''}.` };
 }
 
+// ---- Live progress -----------------------------------------------------------
+// The funding app can watch a ticket come together during the day, before
+// the office approves it: loads so far, tons so far, the hauler amount so
+// far, who has signed. Only for a hauler whose Auto 1 Funding link is
+// active — anyone else's day is none of the funding app's business — and
+// every send is an estimate until the approved hand-off (status
+// approved_ready_to_fund on /tickets) supersedes it.
+//
+// Idempotent per ticket: the funding app upserts by ticket_id. A send is
+// skipped when nothing changed since the last one (hash on the row), so the
+// sweep can run often without chatter.
+
+export type ProgressOutcome = { ok: boolean; sent?: boolean; skipped?: string; error?: string };
+
+const OPEN_STATUSES = ['draft', 'submitted', 'rejected'];
+
+// Small, dependency-free change detector. Not security — just "did anything
+// move since last time".
+function fingerprint(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(16) + ':' + s.length;
+}
+
+export async function sendTicketProgress(
+  db: SupabaseClient,
+  workOrderId: string,
+  opts: { withdrawn?: boolean } = {},
+): Promise<ProgressOutcome> {
+  const recordError = async (reason: string) => {
+    await db.from('work_orders').update({ factor_progress_error: reason }).eq('id', workOrderId);
+    return { ok: false, error: reason };
+  };
+  try {
+    const { data: row } = await db
+      .from('work_orders').select('*').eq('id', workOrderId).maybeSingle();
+    if (!row) return { ok: false, error: 'ticket not found' };
+    const wo = row as WorkOrder;
+    if (!wo.hauler_id) return { ok: true, skipped: 'no hauling company on the ticket' };
+
+    // The gate: an active Auto 1 Funding link on the company. The cached
+    // answer is refreshed at every moment that matters, and the funding
+    // app's own 403 below corrects it if it has gone stale.
+    const { data: h } = await db
+      .from('haulers').select('factoring_link_status').eq('id', wo.hauler_id).maybeSingle();
+    if ((h as { factoring_link_status: string } | null)?.factoring_link_status !== 'linked') {
+      return { ok: true, skipped: 'company not linked to Auto 1 Funding' };
+    }
+
+    // Withdrawn tells the funding app to drop a preview it has: the ticket
+    // was deleted, or approved as standard pay. Pointless if they never saw it.
+    const withdrawn = !!opts.withdrawn;
+    if (withdrawn && !wo.factor_progress_sent_at) return { ok: true, skipped: 'never previewed' };
+    if (!withdrawn && !OPEN_STATUSES.includes(wo.status)) {
+      return { ok: true, skipped: `ticket is ${wo.status}; the approved hand-off covers it` };
+    }
+
+    const config = await getFactoringConfig(db);
+    if (!config) return { ok: true, skipped: 'factoring app not connected' };
+    const url = siblingEndpoint(config.url, 'progress');
+    if (!url) return recordError('the factoring endpoint URL should end in /tickets — fix it under Work Orders → Setup');
+
+    const { payload, loads } = await buildTicketPayload(db, wo);
+    const stampTimes = loads.flatMap((l) => [l.load_in_at, l.load_out_at, l.unload_in_at, l.unload_out_at])
+      .filter((t): t is string => !!t).sort();
+    const body = {
+      ...payload,
+      status: withdrawn ? 'withdrawn' : 'in_progress',
+      ticket_status: wo.status,
+      payment_method: wo.payment_method,
+      progress: {
+        loads_started: countLoads(loads),
+        loads_completed: loads.filter((l) => l.unload_out_at).length,
+        last_stamp_at: stampTimes.length ? stampTimes[stampTimes.length - 1] : null,
+        hours_so_far: totalHours(wo),
+        submitted_at: wo.submitted_at,
+        driver_signed_at: wo.signature_signed_at,
+        supervisor_signed_at: wo.foreman_signature_signed_at,
+        sent_back: wo.status === 'rejected',
+      },
+    };
+
+    // Nothing moved since the last send: say nothing.
+    const hash = fingerprint(JSON.stringify(body));
+    if (!withdrawn && hash === wo.factor_progress_hash) return { ok: true, skipped: 'unchanged' };
+
+    const res = await postToFactoring(url, config.apiKey, body, 8_000);
+    if (res.status === 403) {
+      const gate = (await res.json().catch(() => null)) as { status?: string } | null;
+      const s = normalizeLinkStatus(gate ? { status: gate.status } : null);
+      if (s) await cacheLinkStatus(db, wo.hauler_id, s);
+      return recordError(linkGateMessage(gate?.status));
+    }
+    if (!res.ok) return recordError(`factoring app answered ${res.status}`);
+
+    await db.from('work_orders').update({
+      factor_progress_sent_at: new Date().toISOString(),
+      factor_progress_hash: withdrawn ? null : hash,
+      factor_progress_error: null,
+    }).eq('id', workOrderId);
+    return { ok: true, sent: true };
+  } catch (err) {
+    return recordError(err instanceof Error ? err.message : 'could not reach the factoring app');
+  }
+}
+
+// The safety net behind the per-stamp pushes: every open ticket of every
+// linked company, re-checked; unchanged ones cost nothing but a hash.
+export async function sweepTicketProgress(
+  db: SupabaseClient,
+): Promise<{ checked: number; sent: number; skipped: number; failed: number }> {
+  const out = { checked: 0, sent: 0, skipped: 0, failed: 0 };
+  const { data: linked } = await db.from('haulers').select('id').eq('factoring_link_status', 'linked');
+  const ids = ((linked as { id: string }[]) || []).map((h) => h.id);
+  if (ids.length === 0) return out;
+  const { data: open } = await db
+    .from('work_orders').select('id')
+    .in('hauler_id', ids).in('status', OPEN_STATUSES)
+    .order('updated_at', { ascending: false }).limit(200);
+  for (const t of (open as { id: string }[]) || []) {
+    out.checked++;
+    const r = await sendTicketProgress(db, t.id);
+    if (r.sent) out.sent++;
+    else if (r.ok) out.skipped++;
+    else out.failed++;
+  }
+  return out;
+}
+
 export type BillOfSale = {
   ok: boolean;
   url?: string;

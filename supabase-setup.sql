@@ -2462,6 +2462,13 @@ alter table public.work_orders add column if not exists truck_type_tons    numer
 -- "PLATE #" on the Bone pad, beside Truck #.
 alter table public.work_orders add column if not exists plate_number       text;
 
+-- Live progress to the funding app (lib/factoring.ts sendTicketProgress):
+-- when the preview last went, a fingerprint of what went (unchanged tickets
+-- are not re-sent), and why the last attempt failed.
+alter table public.work_orders add column if not exists factor_progress_sent_at timestamptz;
+alter table public.work_orders add column if not exists factor_progress_hash    text;
+alter table public.work_orders add column if not exists factor_progress_error   text;
+
 -- "Driver Time" on the paper is the driver's own clock, separate from the
 -- Start Haul / End Haul that bills (start_at / stop_at).
 alter table public.work_orders add column if not exists driver_start_at    timestamptz;

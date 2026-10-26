@@ -43,6 +43,12 @@ Check in this order and report which one it was:
 - `lib/truck-types.ts` — the TYPE OF TRUCK list from the Bone paper pad and
   the 28-load-line limit (two columns of fourteen).
 - `lib/ticket-pdf.ts` — the haul ticket PDF, laid out to mirror the Bone pad.
+- Live progress to the funding app: `sendTicketProgress` in `lib/factoring.ts`
+  posts an in-progress preview of a ticket to `{base}/progress` — only for a
+  hauler whose link is `linked`, only while the ticket is open, only when
+  something changed. Pinged from the form and the load lines, swept every
+  five minutes by `/api/cron/factoring-progress`. Contract:
+  `docs/funding-app-progress-spec.md`.
 - `supabase-setup.sql` — the canonical, re-runnable schema.
 - `migrations/` — one-off SQL for projects converted from the old Auto 1
   Dispatch schema. Never needed on a fresh project.

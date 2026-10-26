@@ -11,7 +11,7 @@ import { createClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { pickEditable, ORDER_LOCKED_FIELDS } from '@/lib/work-orders';
 import { withOrderMismatch } from '@/lib/order-match';
-import { requestBillOfSale, checkFactoringLink } from '@/lib/factoring';
+import { requestBillOfSale, checkFactoringLink, sendTicketProgress } from '@/lib/factoring';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -170,6 +170,9 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   if (!isAdmin && !(existing.submitted_by === user.id && existing.status === 'draft')) {
     return NextResponse.json({ ok: false, error: 'only an admin can delete a ticket (or you, a draft you created)' }, { status: 403 });
   }
+
+  // If the funding app was watching this ticket, tell it to let go. Best-effort.
+  await sendTicketProgress(createAdminClient(), params.id, { withdrawn: true });
 
   const { error } = await supabase.from('work_orders').delete().eq('id', params.id);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });

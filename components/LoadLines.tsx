@@ -6,6 +6,7 @@ import {
   type WorkOrderLoad, type LoadStampKey,
 } from '@/lib/work-orders';
 import { MAX_LOADS } from '@/lib/truck-types';
+import { pingTicketProgress } from '@/lib/progress-ping';
 
 // The 28 load lines off the paper haul ticket (two columns of fourteen on the
 // pad): per load, a ticket number, the four in/out stamps, what it weighed, and
@@ -112,6 +113,7 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange 
     setPending((p) => { const n = { ...p }; delete n[pk]; return n; });
     if (err) { setError(err.message); return; }
     refresh();
+    pingTicketProgress(workOrderId);
   }
 
   async function clearStamp(load: WorkOrderLoad, key: LoadStampKey) {
@@ -126,6 +128,7 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange 
     setBusy('');
     if (err) { setError(err.message); return; }
     refresh();
+    pingTicketProgress(workOrderId);
   }
 
   async function setField(loadNo: number, field: 'ticket_number' | 'tons' | 'material', value: string) {
@@ -140,6 +143,7 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange 
         .insert({ work_order_id: workOrderId, load_no: loadNo, [field]: val });
       refresh();
     }
+    pingTicketProgress(workOrderId);
   }
 
   async function removeLoad(load: WorkOrderLoad) {
@@ -148,6 +152,7 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange 
     await supabase.from('work_order_loads').delete().eq('id', load.id);
     setBusy('');
     refresh();
+    pingTicketProgress(workOrderId);
   }
 
   const nextNo = loads.length ? Math.max(...loads.map((l) => l.load_no)) + 1 : 1;

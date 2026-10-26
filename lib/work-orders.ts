@@ -127,6 +127,10 @@ export type WorkOrder = {
   payment_method: 'standard' | 'factor' | null;
   factor_sent_at: string | null;
   factor_error: string | null;
+  // Live progress to the funding app (lib/factoring.ts sendTicketProgress).
+  factor_progress_sent_at: string | null;
+  factor_progress_hash: string | null;
+  factor_progress_error: string | null;
   // A bill-of-sale signature older than this doesn't count — set when the
   // office sends the ticket back and the numbers change under the signature.
   bos_reset_at: string | null;

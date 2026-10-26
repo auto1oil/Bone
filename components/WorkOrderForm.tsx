@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { TRUCK_TYPES } from '@/lib/truck-types';
+import { pingTicketProgress } from '@/lib/progress-ping';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase-browser';
@@ -488,6 +489,7 @@ export default function WorkOrderForm({
         return;
       }
       setMsg(submit ? 'Completed — it\u2019s with the office now.' : 'Saved.');
+      pingTicketProgress(json.work_order?.id);
       onSaved?.(json.work_order as WorkOrder);
       if (!id) router.replace(`/tickets/${json.work_order.id}`);
       else router.refresh();

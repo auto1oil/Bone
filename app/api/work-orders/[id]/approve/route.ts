@@ -17,7 +17,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { invoiceWorkOrder, type WorkOrder } from '@/lib/work-orders';
-import { sendTicketToFactoring } from '@/lib/factoring';
+import { sendTicketToFactoring, sendTicketProgress } from '@/lib/factoring';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -104,6 +104,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       .single();
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
     await notify(db, wo, 'work_order_rejected', 'Ticket sent back', reason);
+    // The funding app's preview shows it as sent back. Best-effort.
+    await sendTicketProgress(db, wo.id);
     return NextResponse.json({ ok: true, work_order: updated });
   }
 
@@ -161,6 +163,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (as === 'office' && (updated as WorkOrder).payment_method === 'factor') {
     const sent = await sendTicketToFactoring(db, wo.id);
     if (!sent.ok) factorError = sent.error || 'factoring hand-off failed';
+  } else if (as === 'office') {
+    // Approved as standard pay: whatever preview the funding app was
+    // watching is not going to become a deal. Best-effort.
+    await sendTicketProgress(db, wo.id, { withdrawn: true });
   }
 
   await notify(
