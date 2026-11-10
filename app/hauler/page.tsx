@@ -243,8 +243,13 @@ export default function HaulerLoadsPage() {
               <div className="space-y-2">
                 {offered.map((l) => (
                   <div key={l.id} className="bg-white border-2 border-accent-400 rounded-lg px-4 py-3">
-                    <div className="font-medium text-sm">
-                      {l.job_number ? `Job ${l.job_number}` : l.job_name || 'Load'}
+                    <div className="flex items-start justify-between gap-3">
+                      <Link href={`/hauler/loads/${l.id}`} className="font-medium text-sm hover:underline">
+                        {l.job_number ? `Job ${l.job_number}` : l.job_name || 'Load'}
+                      </Link>
+                      <Link href={`/hauler/loads/${l.id}`} className="text-xs text-brand-700 hover:underline shrink-0">
+                        Details →
+                      </Link>
                     </div>
                     <div className="text-xs text-gray-600 mt-0.5">{details(l)}</div>
                     {l.notes && <div className="text-xs text-gray-600 mt-1">{l.notes}</div>}
@@ -320,9 +325,12 @@ export default function HaulerLoadsPage() {
                     <div key={l.id} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
                       <div className="flex justify-between items-start gap-3 flex-wrap">
                         <div className="min-w-0">
-                          <span className="font-medium text-sm">
+                          <Link href={`/hauler/loads/${l.id}`} className="font-medium text-sm hover:underline">
                             {l.job_number ? `Job ${l.job_number}` : l.job_name || 'Load'}
-                          </span>
+                          </Link>
+                          <Link href={`/hauler/loads/${l.id}`} className="ml-2 text-xs text-brand-700 hover:underline">
+                            Details →
+                          </Link>
                           <div className="text-xs text-gray-500 mt-0.5">{details(l)}</div>
                           {l.decline_reason && (
                             <div className="text-xs text-gray-500 mt-0.5">You declined: {l.decline_reason}</div>

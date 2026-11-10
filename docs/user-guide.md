@@ -350,7 +350,8 @@ company's work.
 
 **Loads** tab. A load Bone sends you shows up with the job, date, start time,
 pickup, drop-off, equipment needed, and your pay rate, and you get a push
-notification.
+notification. Tap the load's name or Details to open it in full, including
+Bone's note, before you answer; Accept and Decline are there too.
 
 - Tap **Accept**, or **Accept all** when several arrive at once. A
   **Decline** carries your reason back to Bone.
