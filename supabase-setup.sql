@@ -2767,6 +2767,11 @@ create policy "job_orders read" on public.job_orders
 -- ==========================================================================
 
 alter table public.job_orders add column if not exists pay_rate numeric(12,2);
+-- Where the trucks load and where they unload. The job address is the site;
+-- the load address is usually the pit. Both go onto every load sent for the
+-- order and onto the tickets filed against it.
+alter table public.job_orders add column if not exists pickup_address  text;
+alter table public.job_orders add column if not exists dropoff_address text;
 
 -- A flat fuel-surcharge figure on the order, put in front of whoever audits a
 -- ticket so they check it against the invoice without digging.

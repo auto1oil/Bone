@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 // Everything a hauler may see about the job. rate and fuel_surcharge are
 // deliberately not in this list.
 const SAFE_COLUMNS = [
-  'id', 'order_number', 'business_id', 'job_name', 'job_number', 'phase_code', 'job_address',
+  'id', 'order_number', 'business_id', 'job_name', 'job_number', 'phase_code', 'job_address', 'pickup_address', 'dropoff_address',
   'start_date', 'end_date', 'start_time', 'stop_time', 'travel_hours', 'down_hours',
   'pay_rate', 'rate_unit', 'fsr', 'tonnage', 'tonnage_type', 'equipment_type', 'unit_number',
   'status', 'notes',

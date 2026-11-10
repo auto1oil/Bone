@@ -30,6 +30,8 @@ function toDraft(o: JobOrder | null): Draft {
     job_number: v(o?.job_number),
     phase_code: v(o?.phase_code),
     job_address: v(o?.job_address),
+    pickup_address: v(o?.pickup_address),
+    dropoff_address: v(o?.dropoff_address),
     start_date: v(o?.start_date) || today,
     end_date: v(o?.end_date) || today,
     start_time: v(o?.start_time),
@@ -81,6 +83,8 @@ export default function OrderForm({ order }: { order: JobOrder | null }) {
       job_number: txt(draft.job_number),
       phase_code: txt(draft.phase_code),
       job_address: txt(draft.job_address),
+      pickup_address: txt(draft.pickup_address),
+      dropoff_address: txt(draft.dropoff_address),
       start_date: draft.start_date || null,
       end_date: draft.end_date || null,
       start_time: txt(draft.start_time),
@@ -143,6 +147,13 @@ export default function OrderForm({ order }: { order: JobOrder | null }) {
           </label>
           <label className="col-span-2 sm:col-span-3"><span className={label}>Job address</span>
             <input value={draft.job_address} onChange={(e) => set('job_address', e.target.value)} className={input} />
+          </label>
+          <label className="col-span-2 sm:col-span-3"><span className={label}>Load address (where the trucks load — the pit)</span>
+            <input value={draft.pickup_address} onChange={(e) => set('pickup_address', e.target.value)} className={input}
+              placeholder="e.g. Point of the Mountain pit, 14000 S Minuteman Dr, Draper" />
+          </label>
+          <label className="col-span-2 sm:col-span-3"><span className={label}>Unload address (leave blank if it's the job address)</span>
+            <input value={draft.dropoff_address} onChange={(e) => set('dropoff_address', e.target.value)} className={input} />
           </label>
         </div>
       </div>

@@ -26,15 +26,22 @@ export async function startHaulTicket(
   // loads, so the accepter and the driver are the same person.
   const driverId = load.driver_id || userId;
   try {
-    const [{ data: company }, { data: unit }, { data: driver }] = await Promise.all([
+    const [{ data: company }, { data: unit }, { data: driver }, { data: order }] = await Promise.all([
       db.from('haulers').select('name').eq('id', load.hauler_id).maybeSingle(),
       load.equipment_id
         ? db.from('hauler_equipment').select('unit_number, equipment_type')
             .eq('id', load.equipment_id).maybeSingle()
         : Promise.resolve({ data: null }),
       db.from('profiles').select('full_name, email').eq('id', driverId).maybeSingle(),
+      // The job's own address, so the ticket reads like the paper one: job
+      // address is the site, pit address is where the trucks load. Only
+      // these two columns are read — the order's rates stay on the order.
+      load.order_id
+        ? db.from('job_orders').select('job_address, pickup_address').eq('id', load.order_id).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
     const named = driver as { full_name: string | null; email: string } | null;
+    const job = order as { job_address: string | null; pickup_address: string | null } | null;
 
     const { data: wo, error } = await db
       .from('work_orders')
@@ -52,9 +59,8 @@ export async function startHaulTicket(
           (unit as { equipment_type: string | null } | null)?.equipment_type ?? load.equipment_type,
         job_number: load.job_number,
         job_name: load.job_name,
-        job_address: load.pickup && load.dropoff
-          ? `${load.pickup} → ${load.dropoff}`
-          : (load.pickup || load.dropoff),
+        job_address: job?.job_address || load.dropoff || null,
+        supplier: load.pickup || job?.pickup_address || null,
         phase_code: load.phase_code,
         job_date: load.job_date,
         // What the hauler is owed. Never the customer's rate — that lives on

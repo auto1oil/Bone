@@ -26,6 +26,7 @@ type JobDetails = {
   order_number: number;
   customer: string | null;
   job_name: string | null; job_number: string | null; phase_code: string | null; job_address: string | null;
+  pickup_address: string | null; dropoff_address: string | null;
   start_date: string | null; end_date: string | null; start_time: string | null; stop_time: string | null;
   travel_hours: number | null; down_hours: number | null;
   pay_rate: number | null; rate_unit: string | null; fsr: string | null;
@@ -189,13 +190,13 @@ export default function HaulerLoadDetailPage() {
     ['Customer', job?.customer],
     ['Job', [load.job_number || job?.job_number ? `#${load.job_number || job?.job_number}` : null, load.job_name || job?.job_name].filter(Boolean).join(' · ') || null],
     ['Phase', load.phase_code || job?.phase_code],
-    ['Job address', <MapLink key="job-address" address={job?.job_address || load.dropoff} />],
+    ['Job address', <MapLink key="job-address" address={job?.job_address} />],
     ['This load', fmtDate(load.job_date)],
     ['Job runs', job?.start_date ? `${fmtDate(job.start_date)}${job.end_date && job.end_date !== job.start_date ? ` to ${fmtDate(job.end_date)}` : ''}` : null],
     ['Daily hours', job?.start_time || job?.stop_time ? [job.start_time, job.stop_time].filter(Boolean).join(' to ') : null],
     ['Start time', load.start_time && load.start_time !== job?.start_time ? load.start_time : (job?.start_time ? null : load.start_time)],
-    ['Pickup', <MapLink key="pickup" address={load.pickup} />],
-    ['Drop off', load.dropoff && load.dropoff !== job?.job_address ? <MapLink key="dropoff" address={load.dropoff} /> : null],
+    ['Load at', <MapLink key="pickup" address={load.pickup || job?.pickup_address} />],
+    ['Unload at', <MapLink key="dropoff" address={load.dropoff || job?.dropoff_address || job?.job_address} />],
     ['Material', job?.tonnage_type],
     ['Tonnage', job?.tonnage != null ? `${Number(job.tonnage)} tons${rateUnit === 'ton' ? ' (billed by the ton)' : ' (for information; billed by the ' + rateUnit + ')'}` : null],
     ['Travel time allowed', hrs(job?.travel_hours)],
