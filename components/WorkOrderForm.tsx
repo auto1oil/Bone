@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { TRUCK_TYPES } from '@/lib/truck-types';
 import { pingTicketProgress } from '@/lib/progress-ping';
+import MapLink from '@/components/MapLink';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase-browser';
@@ -617,6 +618,9 @@ export default function WorkOrderForm({
           </label>
           <label className="col-span-2 sm:col-span-3"><span className={label}>Job address</span>
             <input value={draft.job_address} onChange={(e) => set('job_address', e.target.value)} disabled={orderLocked} className={jobInput} />
+            {draft.job_address.trim() && (
+              <span className="block mt-1 text-xs"><MapLink address={draft.job_address} /></span>
+            )}
           </label>
           <label><span className={label}>Day #</span>
             <input value={draft.day_number} onChange={(e) => set('day_number', e.target.value)} disabled={locked} className={input} />
@@ -653,6 +657,9 @@ export default function WorkOrderForm({
           </label>
           <label><span className={label}>Pit address</span>
             <input value={draft.supplier} onChange={(e) => set('supplier', e.target.value)} disabled={locked} className={input} />
+            {draft.supplier.trim() && (
+              <span className="block mt-1 text-xs"><MapLink address={draft.supplier} /></span>
+            )}
           </label>
           <label><span className={label}>Truck type</span>
             <select value={draft.truck_type} onChange={(e) => set('truck_type', e.target.value)} disabled={locked} className={input}>
