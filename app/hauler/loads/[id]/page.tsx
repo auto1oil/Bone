@@ -19,6 +19,19 @@ import {
 
 type Crew = { id: string; full_name: string | null; email: string; active: boolean };
 
+// The job behind the load, as /api/haulers/loads/[id]/order hands it over:
+// everything but the customer's money.
+type JobDetails = {
+  order_number: number;
+  customer: string | null;
+  job_name: string | null; job_number: string | null; phase_code: string | null; job_address: string | null;
+  start_date: string | null; end_date: string | null; start_time: string | null; stop_time: string | null;
+  travel_hours: number | null; down_hours: number | null;
+  pay_rate: number | null; rate_unit: string | null; fsr: string | null;
+  tonnage: number | null; tonnage_type: string | null; equipment_type: string | null; unit_number: string | null;
+  status: string; notes: string | null;
+};
+
 const fmtWhen = (iso: string | null) => {
   if (!iso) return '';
   const d = new Date(iso);
@@ -36,6 +49,7 @@ export default function HaulerLoadDetailPage() {
   const supabase = createClient();
   const router = useRouter();
   const [load, setLoad] = useState<HaulerLoad | null>(null);
+  const [job, setJob] = useState<JobDetails | null>(null);
   const [fleet, setFleet] = useState<HaulerEquipment[]>([]);
   const [crew, setCrew] = useState<Crew[]>([]);
   const [meId, setMeId] = useState<string | null>(null);
@@ -64,6 +78,13 @@ export default function HaulerLoadDetailPage() {
       const json = await res.json();
       if (json.ok) setCrew(json.drivers);
     } catch { /* the picker falls back to 'Me' */ }
+    // The job's own details come through the server, which leaves the
+    // customer's rate behind.
+    try {
+      const res = await fetch(`/api/haulers/loads/${id}/order`, { cache: 'no-store' });
+      const json = await res.json();
+      setJob(json.ok ? (json.order as JobDetails | null) : null);
+    } catch { setJob(null); }
     setLoading(false);
   }, [supabase, id]);
 
@@ -160,16 +181,28 @@ export default function HaulerLoadDetailPage() {
   const select = 'px-2.5 py-1.5 border border-gray-300 rounded-md text-sm';
   const input = 'w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-sm';
 
+  const hrs = (n: number | null | undefined) => (n == null ? null : `${Number(n)} hr${Number(n) === 1 ? '' : 's'}`);
+  const rate = load.rate ?? job?.pay_rate ?? null;
+  const rateUnit = load.rate_unit || job?.rate_unit || 'hour';
   const rows: [string, string | null | undefined][] = [
-    ['Job', [load.job_number ? `#${load.job_number}` : null, load.job_name].filter(Boolean).join(' · ') || null],
-    ['Phase', load.phase_code],
-    ['Date', fmtDate(load.job_date)],
-    ['Start time', load.start_time],
+    ['Customer', job?.customer],
+    ['Job', [load.job_number || job?.job_number ? `#${load.job_number || job?.job_number}` : null, load.job_name || job?.job_name].filter(Boolean).join(' · ') || null],
+    ['Phase', load.phase_code || job?.phase_code],
+    ['Job address', job?.job_address || load.dropoff],
+    ['This load', fmtDate(load.job_date)],
+    ['Job runs', job?.start_date ? `${fmtDate(job.start_date)}${job.end_date && job.end_date !== job.start_date ? ` to ${fmtDate(job.end_date)}` : ''}` : null],
+    ['Daily hours', job?.start_time || job?.stop_time ? [job.start_time, job.stop_time].filter(Boolean).join(' to ') : null],
+    ['Start time', load.start_time && load.start_time !== job?.start_time ? load.start_time : (job?.start_time ? null : load.start_time)],
     ['Pickup', load.pickup],
-    ['Drop off', load.dropoff],
-    ['Equipment needed', load.equipment_type],
+    ['Drop off', load.dropoff && load.dropoff !== job?.job_address ? load.dropoff : null],
+    ['Material', job?.tonnage_type],
+    ['Tonnage', job?.tonnage != null ? `${Number(job.tonnage)} tons${rateUnit === 'ton' ? ' (billed by the ton)' : ' (for information; billed by the ' + rateUnit + ')'}` : null],
+    ['Travel time allowed', hrs(job?.travel_hours)],
+    ['Down time allowed', hrs(job?.down_hours)],
+    ['Equipment needed', load.equipment_type || job?.equipment_type],
     ['Your unit', unitOnFile ? [unitOnFile.unit_number, unitOnFile.equipment_type].filter(Boolean).join(' · ') : null],
-    ['Your pay rate', load.rate != null ? `$${Number(load.rate).toFixed(2)} per ${load.rate_unit || 'hour'}` : null],
+    ['Field rep (FSR)', job?.fsr],
+    ['Your pay rate', rate != null ? `$${Number(rate).toFixed(2)} per ${rateUnit}` : null],
     ['Sent to you', fmtWhen(load.created_at)],
     ['Your answer', load.responded_at
       ? `${load.status === 'declined' ? 'Declined' : 'Accepted'} ${fmtWhen(load.responded_at)}${load.decline_reason ? ` — ${load.decline_reason}` : ''}`
@@ -203,9 +236,18 @@ export default function HaulerLoadDetailPage() {
         ))}
         {load.notes && (
           <div className="px-4 py-3 text-sm">
-            <div className="text-gray-500 mb-1">Note from Bone</div>
+            <div className="text-gray-500 mb-1">Note on this load</div>
             <div className="text-gray-900 whitespace-pre-wrap">{load.notes}</div>
           </div>
+        )}
+        {job?.notes && (
+          <div className="px-4 py-3 text-sm">
+            <div className="text-gray-500 mb-1">Job notes</div>
+            <div className="text-gray-900 whitespace-pre-wrap">{job.notes}</div>
+          </div>
+        )}
+        {!job && load.order_id && (
+          <div className="px-4 py-3 text-xs text-gray-500">Couldn&apos;t load the job&apos;s details right now — pull to refresh.</div>
         )}
       </div>
 

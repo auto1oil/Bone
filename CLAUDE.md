@@ -87,7 +87,10 @@ Each rule is enforced server-side (route check and/or RLS), never only in UI:
   The one exception is a hauling company adding its own drivers via
   `/api/haulers/drivers`. Public sign-up must stay OFF in Supabase Auth.
 - **Money**: customer rates and hauler pay rates are office + admin; haulers
-  never read `job_orders`. There is no employee pay data in this app.
+  never read `job_orders`. The one window is `/api/haulers/loads/[id]/order`,
+  which hands a hauler its own load's job details with `rate` and
+  `fuel_surcharge` left out (keep that column list closed). There is no
+  employee pay data in this app.
 
 ## Money is recomputed, never trusted
 
