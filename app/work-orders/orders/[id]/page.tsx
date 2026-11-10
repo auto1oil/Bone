@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
+import MapLink from '@/components/MapLink';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase-browser';
 import OrderForm from '@/components/OrderForm';
@@ -78,13 +79,13 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
   const hours = tickets.reduce((n, t) => n + totalHours(t), 0);
   const tons = tickets.reduce((n, t) => n + Number(t.loads_tons || 0), 0);
 
-  const facts: [string, string | null][] = [
+  const facts: [string, React.ReactNode][] = [
     ['Customer', customer],
     ['Customer #', order.customer_number],
     ['Job #', order.job_number],
     ['Phase', order.phase_code],
     ['FSR', order.fsr],
-    ['Address', order.job_address],
+    ['Address', <MapLink key="address" address={order.job_address} />],
     ['Runs', orderSpan(order)],
     ['Daily hours', order.start_time && order.stop_time ? `${order.start_time} – ${order.stop_time}` : null],
     ['Rate', order.rate != null ? `$${Number(order.rate).toFixed(2)}/${order.rate_unit || 'hr'}` : null],

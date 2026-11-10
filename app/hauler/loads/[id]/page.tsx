@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase-browser';
+import MapLink from '@/components/MapLink';
 import {
   LOAD_STATUS_LABEL, LOAD_STATUS_TONE,
   type HaulerLoad, type HaulerEquipment, type LoadStatus,
@@ -184,17 +185,17 @@ export default function HaulerLoadDetailPage() {
   const hrs = (n: number | null | undefined) => (n == null ? null : `${Number(n)} hr${Number(n) === 1 ? '' : 's'}`);
   const rate = load.rate ?? job?.pay_rate ?? null;
   const rateUnit = load.rate_unit || job?.rate_unit || 'hour';
-  const rows: [string, string | null | undefined][] = [
+  const rows: [string, React.ReactNode][] = [
     ['Customer', job?.customer],
     ['Job', [load.job_number || job?.job_number ? `#${load.job_number || job?.job_number}` : null, load.job_name || job?.job_name].filter(Boolean).join(' · ') || null],
     ['Phase', load.phase_code || job?.phase_code],
-    ['Job address', job?.job_address || load.dropoff],
+    ['Job address', <MapLink key="job-address" address={job?.job_address || load.dropoff} />],
     ['This load', fmtDate(load.job_date)],
     ['Job runs', job?.start_date ? `${fmtDate(job.start_date)}${job.end_date && job.end_date !== job.start_date ? ` to ${fmtDate(job.end_date)}` : ''}` : null],
     ['Daily hours', job?.start_time || job?.stop_time ? [job.start_time, job.stop_time].filter(Boolean).join(' to ') : null],
     ['Start time', load.start_time && load.start_time !== job?.start_time ? load.start_time : (job?.start_time ? null : load.start_time)],
-    ['Pickup', load.pickup],
-    ['Drop off', load.dropoff && load.dropoff !== job?.job_address ? load.dropoff : null],
+    ['Pickup', <MapLink key="pickup" address={load.pickup} />],
+    ['Drop off', load.dropoff && load.dropoff !== job?.job_address ? <MapLink key="dropoff" address={load.dropoff} /> : null],
     ['Material', job?.tonnage_type],
     ['Tonnage', job?.tonnage != null ? `${Number(job.tonnage)} tons${rateUnit === 'ton' ? ' (billed by the ton)' : ' (for information; billed by the ' + rateUnit + ')'}` : null],
     ['Travel time allowed', hrs(job?.travel_hours)],
