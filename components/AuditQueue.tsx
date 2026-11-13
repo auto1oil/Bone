@@ -7,6 +7,8 @@ import {
   type WorkOrder,
 } from '@/lib/work-orders';
 import type { JobOrder } from '@/lib/job-orders';
+import PlaceCheckPanel from '@/components/PlaceCheckPanel';
+import type { PlaceCheck } from '@/lib/place-check';
 
 // What the verify panel reads off the ticket's order.
 type OrderFacts = Pick<JobOrder,
@@ -54,6 +56,13 @@ const COLUMNS: Column[] = [
   { key: 'amount', label: 'Amount', get: (w) => `$${ticketAmount(w).toFixed(2)}` },
   { key: 'photo', label: 'Photo', get: (w) => (w.ticket_photo_path ? 'yes' : 'MISSING') },
   { key: 'foreman', label: 'Foreman', get: (w) => (w.foreman_signature_path ? 'signed' : 'MISSING') },
+  { key: 'place', label: 'Place check', get: (w) => {
+    const c = w.place_check as PlaceCheck | null;
+    if (!c) return 'not run';
+    if (c.off > 0) return `${c.off} OFF`;
+    if (c.flag) return 'no fix';
+    return c.checked > 0 ? `${c.checked} ok` : '—';
+  } },
 ];
 
 const DEFAULT_KEYS = ['job_date', 'driver_name', 'trucking_company', 'unit_number',
@@ -68,6 +77,10 @@ function needsEyes(w: WorkOrder): string | null {
   // nobody on the customer's side who agreed to these hours.
   if (!w.foreman_signature_path) return 'the job foreman never signed it';
   if (ticketAmount(w) <= 0) return 'nothing to bill — no hours, no tonnage, or no rate';
+  // Where the truck was. A stamp away from the job's pit or site, or a day
+  // with no GPS at all, is a reason to look — never a quiet pass.
+  const place = w.place_check as PlaceCheck | null;
+  if (place?.flag) return place.flag;
   return null;
 }
 
@@ -283,6 +296,15 @@ export default function AuditQueue() {
               ) : (
                 <p className="mt-2 text-xs text-red-600">No photo of the paper ticket.</p>
               )}
+            </div>
+            <div className="mt-2">
+              <PlaceCheckPanel
+                workOrderId={w.id}
+                check={w.place_check as PlaceCheck | null}
+                canRecheck
+                compact
+                onChange={(c) => setRows((rs) => rs.map((r) => (r.id === w.id ? { ...r, place_check: c, place_check_at: c.checked_at } : r)))}
+              />
             </div>
           </div>
         </div>

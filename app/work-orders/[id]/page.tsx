@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase-browser';
 import { STATUS_LABEL, STATUS_TONE, type WorkOrder, type WorkOrderStatus } from '@/lib/work-orders';
 import WorkOrderForm from '@/components/WorkOrderForm';
+import PlaceCheckPanel from '@/components/PlaceCheckPanel';
+import type { PlaceCheck } from '@/lib/place-check';
 
 // The office's view of one ticket: the same form the crew filled in, fully
 // editable, with Approve / Send back at the bottom and the approval trail on
@@ -113,6 +115,15 @@ export default function OfficeWorkOrderPage({ params }: { params: { id: string }
           ))}
         </div>
       )}
+
+      <div className="mb-3">
+        <PlaceCheckPanel
+          workOrderId={wo.id}
+          check={wo.place_check as PlaceCheck | null}
+          canRecheck
+          onChange={(c) => setWo({ ...wo, place_check: c, place_check_at: c.checked_at })}
+        />
+      </div>
 
       {(wo.status === 'office_approved' || wo.status === 'funds_approved') && !wo.qb_invoice_id && (
         <div className="bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-3 flex items-center justify-between gap-3 flex-wrap">

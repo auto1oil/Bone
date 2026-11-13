@@ -150,7 +150,10 @@ export default function OrderForm({ order }: { order: JobOrder | null }) {
           </label>
           <label className="col-span-2 sm:col-span-3"><span className={label}>Load address (where the trucks load — the pit)</span>
             <input value={draft.pickup_address} onChange={(e) => set('pickup_address', e.target.value)} className={input}
-              placeholder="e.g. Point of the Mountain pit, 14000 S Minuteman Dr, Draper" />
+              placeholder="Street address, or coordinates pasted from Google Maps: 40.4616, -111.8956" />
+            <span className="block mt-1 text-[11px] text-gray-500">
+              The load stamps on every ticket are checked against this spot. A pit with no street address: long-press it in Google Maps and paste the numbers.
+            </span>
           </label>
           <label className="col-span-2 sm:col-span-3"><span className={label}>Unload address (leave blank if it's the job address)</span>
             <input value={draft.dropoff_address} onChange={(e) => set('dropoff_address', e.target.value)} className={input} />

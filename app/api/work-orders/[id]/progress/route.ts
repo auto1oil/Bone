@@ -11,6 +11,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { sendTicketProgress } from '@/lib/factoring';
+import { runPlaceCheck } from '@/lib/place-check';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -37,6 +38,9 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ ok: false, error: 'not your ticket' }, { status: 403 });
   }
 
+  // A stamp just landed: measure it against the job's places, then let the
+  // funding app's preview catch up. Both best-effort.
+  await runPlaceCheck(db, params.id);
   const result = await sendTicketProgress(db, params.id);
   return NextResponse.json(result);
 }

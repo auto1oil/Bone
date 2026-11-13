@@ -2469,6 +2469,24 @@ alter table public.work_orders add column if not exists factor_progress_sent_at 
 alter table public.work_orders add column if not exists factor_progress_hash    text;
 alter table public.work_orders add column if not exists factor_progress_error   text;
 
+-- The place check (lib/place-check.ts): every load stamp's GPS fix measured
+-- against the job's pit and site, stored as one JSON result the audit reads.
+alter table public.work_orders add column if not exists place_check    jsonb;
+alter table public.work_orders add column if not exists place_check_at timestamptz;
+
+-- Addresses geocoded once and kept (lib/geocode.ts). Service role only —
+-- nothing in the browser reads or writes it.
+create table if not exists public.geocode_cache (
+  address_key text primary key,
+  address     text not null,
+  lat         double precision,
+  lng         double precision,
+  label       text,
+  provider    text,
+  geocoded_at timestamptz not null default now()
+);
+alter table public.geocode_cache enable row level security;
+
 -- "Driver Time" on the paper is the driver's own clock, separate from the
 -- Start Haul / End Haul that bills (start_at / stop_at).
 alter table public.work_orders add column if not exists driver_start_at    timestamptz;

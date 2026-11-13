@@ -12,6 +12,7 @@ import { createAdminClient } from '@/lib/supabase-admin';
 import { pickEditable, ORDER_LOCKED_FIELDS } from '@/lib/work-orders';
 import { withOrderMismatch } from '@/lib/order-match';
 import { requestBillOfSale, checkFactoringLink, sendTicketProgress } from '@/lib/factoring';
+import { runPlaceCheck } from '@/lib/place-check';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -148,7 +149,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     } catch { /* notification is a nicety, the ticket is submitted either way */ }
   }
 
-  return NextResponse.json({ ok: true, work_order: data });
+  // Where the truck was against where the job says. Best-effort and never a
+  // gate; the audit reads the result off the row.
+  const checked = await runPlaceCheck(createAdminClient(), params.id);
+  const fresh = checked ? { ...data, place_check: checked, place_check_at: checked.checked_at } : data;
+
+  return NextResponse.json({ ok: true, work_order: fresh });
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {

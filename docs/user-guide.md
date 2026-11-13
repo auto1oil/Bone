@@ -190,7 +190,15 @@ Tickets tab. The bell shows how many are waiting.
   reason: disagrees with its order, no order, no photo, nothing to bill. Tap
   one to open the verify panel, which shows what was agreed beside what was
   turned in and the photo of the paper ticket. Choose fields picks which of
-  the 24 columns the whole office sees.
+  the columns the whole office sees.
+- **Place check.** Every load stamp carries the phone's GPS fix, and the app
+  measures each one against the job's load address (the pit) and unload
+  address (the site) from the order. A stamp more than about half a mile
+  from where it should be flags the ticket with the distance; so does a day
+  with no GPS on any stamp. The verify panel lists every stamp with a map
+  link for where the truck was and where it should have been. Keep the load
+  and unload addresses filled in on the order, or there is nothing to check
+  against.
 - **All tickets** filters by stage: Waiting on office, Approved, Funds
   approved, Invoiced, Sent back, Drafts.
 - **Open a ticket** to fix anything that's off, then press Approve & invoice
