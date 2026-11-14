@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import WorkOrderList from '@/components/WorkOrderList';
+import TodayCards from '@/components/TodayCards';
 
 // A crew member's own tickets, newest first, filtered by where each one is in
 // the approval chain.
@@ -28,6 +29,8 @@ export default function MyTicketsPage() {
           + New ticket
         </Link>
       </div>
+
+      <TodayCards />
 
       <div className="flex gap-2 mb-4 flex-wrap">
         {FILTERS.map((f) => (

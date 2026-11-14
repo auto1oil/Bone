@@ -62,6 +62,23 @@ const clockOf = (iso: string | null) =>
 // corner.
 const FAB_POS_KEY = 'bone-stamp-fab-pos';
 
+// Stamps that couldn't be sent — a pit with no signal — wait on the phone
+// and go when the signal returns. The time and the fix were taken at the
+// tap, so nothing about the stamp changes by arriving late.
+const QUEUE_KEY = 'bone-stamp-queue';
+type QueuedStamp = { workOrderId: string; loadNo: number; key: LoadStampKey; at: string; fix: Fix };
+function readQueue(): QueuedStamp[] {
+  try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]') as QueuedStamp[]; } catch { return []; }
+}
+function writeQueue(q: QueuedStamp[]) {
+  try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); } catch { /* storage full or blocked: the stamp still shows until reload */ }
+}
+// A failed write that is the network's fault, not the data's.
+function looksOffline(message: string): boolean {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  return /fetch|network|load failed|timed? ?out|connection|socket/i.test(message);
+}
+
 export default function LoadLines({ workOrderId, locked = false, onTotalsChange }: Props) {
   const supabase = createClient();
   const [loads, setLoads] = useState<WorkOrderLoad[]>([]);
@@ -71,6 +88,8 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange 
   // Times shown before the row comes back from the database, so a tap reads as
   // instant even on a bad signal. Keyed "loadNo:stampKey".
   const [pending, setPending] = useState<Record<string, string>>({});
+  // Stamps waiting on the phone for a signal, keyed the same way.
+  const [queued, setQueued] = useState<Record<string, string>>({});
 
   const refresh = useCallback(async () => {
     const { data } = await supabase
@@ -88,6 +107,59 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange 
     onTotalsChange?.({ loads: countLoads(loads), tons: totalLoadTons(loads) });
   }, [loads, onTotalsChange]);
 
+  // Write one stamp. Returns the error message when it didn't land.
+  const writeStamp = useCallback(async (loadNo: number, key: LoadStampKey, at: string, fix: Fix): Promise<string | null> => {
+    const patch: Record<string, unknown> = {
+      [`${key}_at`]: at,
+      [`${key}_lat`]: fix?.lat ?? null,
+      [`${key}_lng`]: fix?.lng ?? null,
+      [`${key}_accuracy`]: fix?.accuracy ?? null,
+    };
+    // Look the row up fresh: a queued stamp may be for a load another
+    // stamp created in the meantime.
+    const { data: rows, error: readErr } = await supabase
+      .from('work_order_loads').select('id').eq('work_order_id', workOrderId).eq('load_no', loadNo).limit(1);
+    if (readErr) return readErr.message;
+    const existingId = (rows as { id: string }[] | null)?.[0]?.id;
+    const { error: err } = existingId
+      ? await supabase.from('work_order_loads').update(patch).eq('id', existingId)
+      : await supabase.from('work_order_loads').insert({ work_order_id: workOrderId, load_no: loadNo, ...patch });
+    return err ? err.message : null;
+  }, [supabase, workOrderId]);
+
+  // Send whatever is waiting on the phone, oldest first, stopping at the
+  // first one that still can't get through.
+  const flushQueue = useCallback(async () => {
+    const mine = readQueue().filter((q) => q.workOrderId === workOrderId);
+    if (mine.length === 0) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    let sent = 0;
+    for (const q of mine.sort((a, b) => a.at.localeCompare(b.at))) {
+      const err = await writeStamp(q.loadNo, q.key, q.at, q.fix);
+      if (err) break;
+      writeQueue(readQueue().filter((x) => !(x.workOrderId === q.workOrderId && x.loadNo === q.loadNo && x.key === q.key)));
+      setQueued((st) => { const n = { ...st }; delete n[`${q.loadNo}:${q.key}`]; return n; });
+      sent++;
+    }
+    if (sent > 0) {
+      setError('');
+      refresh();
+      pingTicketProgress(workOrderId);
+    }
+  }, [workOrderId, writeStamp, refresh]);
+
+  // What was waiting when the page opened, then every time the signal
+  // comes back, and every half minute while anything waits.
+  useEffect(() => {
+    const mine = readQueue().filter((q) => q.workOrderId === workOrderId);
+    if (mine.length) setQueued(Object.fromEntries(mine.map((q) => [`${q.loadNo}:${q.key}`, q.at])));
+    flushQueue();
+    const onOnline = () => { flushQueue(); };
+    window.addEventListener('online', onOnline);
+    const timer = setInterval(() => { if (readQueue().some((q) => q.workOrderId === workOrderId)) flushQueue(); }, 30_000);
+    return () => { window.removeEventListener('online', onOnline); clearInterval(timer); };
+  }, [workOrderId, flushQueue]);
+
   async function stamp(loadNo: number, key: LoadStampKey) {
     if (locked) return;
     const at = new Date().toISOString();
@@ -96,22 +168,24 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange 
     setBusy(pk); setError('');
 
     const fix = await getFix();
-    const patch: Record<string, unknown> = {
-      [`${key}_at`]: at,
-      [`${key}_lat`]: fix?.lat ?? null,
-      [`${key}_lng`]: fix?.lng ?? null,
-      [`${key}_accuracy`]: fix?.accuracy ?? null,
-    };
-
-    const existing = loads.find((l) => l.load_no === loadNo);
-    const { error: err } = existing
-      ? await supabase.from('work_order_loads').update(patch).eq('id', existing.id)
-      : await supabase.from('work_order_loads')
-          .insert({ work_order_id: workOrderId, load_no: loadNo, ...patch });
+    // Anything already waiting goes first, so stamps land in order.
+    await flushQueue();
+    const err = await writeStamp(loadNo, key, at, fix);
 
     setBusy('');
     setPending((p) => { const n = { ...p }; delete n[pk]; return n; });
-    if (err) { setError(err.message); return; }
+    if (err) {
+      if (looksOffline(err)) {
+        // No signal: keep it on the phone. The time and the fix are already
+        // taken, so the stamp is as good as sent once it goes.
+        writeQueue([...readQueue().filter((x) => !(x.workOrderId === workOrderId && x.loadNo === loadNo && x.key === key)),
+          { workOrderId, loadNo, key, at, fix }]);
+        setQueued((st) => ({ ...st, [pk]: at }));
+        return;
+      }
+      setError(err);
+      return;
+    }
     refresh();
     pingTicketProgress(workOrderId);
   }
@@ -186,16 +260,22 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange 
   // it. Null (no button) until the first Load In, and again once all 28
   // lines are done.
   function nextStamp(): { loadNo: number; key: LoadStampKey; label: string } | null {
-    const keys = LOAD_STAMPS.map((s) => s.key);
-    const stamped = [...loads]
+    const has = (l: { load_no: number } & Partial<WorkOrderLoad>, k: LoadStampKey) =>
+      !!l[`${k}_at` as keyof WorkOrderLoad] || !!queued[`${l.load_no}:${k}`];
+    // Loads known to the database, plus any that so far exist only as
+    // stamps waiting on the phone.
+    const known = new Map<number, { load_no: number } & Partial<WorkOrderLoad>>(loads.map((l) => [l.load_no, l]));
+    for (const pk of Object.keys(queued)) {
+      const no = Number(pk.split(':')[0]);
+      if (!known.has(no)) known.set(no, { load_no: no });
+    }
+    const stamped = [...known.values()]
       .sort((a, b) => a.load_no - b.load_no)
-      .filter((l) => keys.some((k) => l[`${k}_at` as keyof WorkOrderLoad]));
+      .filter((l) => LOAD_STAMPS.some((st) => has(l, st.key)));
     if (stamped.length === 0) return null;
     const active = stamped[stamped.length - 1];
-    for (const s of LOAD_STAMPS) {
-      if (!active[`${s.key}_at` as keyof WorkOrderLoad]) {
-        return { loadNo: active.load_no, key: s.key, label: s.label };
-      }
+    for (const st of LOAD_STAMPS) {
+      if (!has(active, st.key)) return { loadNo: active.load_no, key: st.key, label: st.label };
     }
     if (active.load_no + 1 > MAX_LOADS) return null;
     return { loadNo: active.load_no + 1, key: 'load_in', label: 'Load in' };
@@ -248,10 +328,24 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange 
   function stampButton(loadNo: number, key: LoadStampKey, label: string, load?: WorkOrderLoad) {
     const pk = `${loadNo}:${key}`;
     const saved = load ? (load[`${key}_at`] as string | null) : null;
-    const shown = pending[pk] || saved;
+    const waiting = queued[pk];
+    const shown = pending[pk] || saved || waiting;
     const hasFix = load ? load[`${key}_lat` as keyof WorkOrderLoad] != null : false;
     const working = busy === pk;
 
+    if (waiting && !saved) {
+      return (
+        <div
+          key={key}
+          title="Saved on this phone. It sends itself when the signal comes back."
+          className="flex flex-col items-center justify-center rounded-md border border-amber-300 bg-amber-50 px-2 py-2"
+        >
+          <span className="text-[10px] uppercase tracking-wide text-amber-800">{label}</span>
+          <span className="text-sm font-semibold text-amber-900 tabular-nums">{clockOf(waiting)}</span>
+          <span className="text-[10px] text-amber-700">no signal · will send</span>
+        </div>
+      );
+    }
     if (shown) {
       return (
         <button
@@ -355,6 +449,11 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange 
       </div>
 
       {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+      {Object.keys(queued).length > 0 && (
+        <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-2">
+          {Object.keys(queued).length === 1 ? '1 stamp is' : `${Object.keys(queued).length} stamps are`} saved on this phone and will send when the signal comes back. Keep the app open when you&apos;re back in range.
+        </p>
+      )}
 
       {loading ? (
         <p className="text-sm text-gray-500">Loading…</p>

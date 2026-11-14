@@ -267,9 +267,15 @@ plus deliveries and hours. Mechanics have the same screens.
 
 ### My Tickets
 
-Everything you've filed, filtered by Drafts, Submitted, Approved, Sent back.
-A sent-back ticket shows the office's reason; open it, fix it, and Complete
-it again.
+Your open tickets sit at the top as big cards: Start, Continue, or Fix it
+for one the office sent back, with the reason. Below them is everything
+you've filed, filtered by Drafts, Submitted, Approved, Sent back. A sent-back
+ticket shows the office's reason; open it, fix it, and Complete it again.
+
+**No signal in the pit?** Tap the stamp anyway. The time and your location
+are taken at the tap, the button turns amber with "no signal, will send",
+and it sends itself when the signal comes back. Keep the app open when
+you're back in range.
 
 ### Deliveries and Delivery Log
 
