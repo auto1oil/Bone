@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase-browser';
 import NotificationBell from './NotificationBell';
@@ -111,7 +111,7 @@ export default function NavBar({ role, email }: { role: Role; email: string }) {
   ];
   const haulerLinks = [
     { href: '/hauler',              label: 'Loads' },
-    { href: '/tickets',             label: 'Haul Tickets' },
+    { href: '/tickets',             label: 'Tickets' },
     { href: '/hauler/drivers',      label: 'Drivers' },
     { href: '/hauler/equipment',    label: 'Trucks & Equipment' },
     { href: '/hauler/availability', label: 'Availability' },
@@ -162,6 +162,12 @@ export default function NavBar({ role, email }: { role: Role; email: string }) {
     return pathname === href || pathname.startsWith(href + '/');
   }
 
+  // Bring the active tab into view when the row scrolls.
+  const activeTabRef = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }, [pathname]);
+
   return (
     <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40">
       {/* yellow accent stripe at the top — Bone brand touch */}
@@ -208,14 +214,17 @@ export default function NavBar({ role, email }: { role: Role; email: string }) {
           </div>
         </div>
 
-        {/* Row 2 — tabs wrap onto multiple rows so nothing runs off-screen. */}
-        <nav className="flex flex-wrap gap-1 pb-2">
+        {/* Row 2 — one row of tabs that scrolls sideways on a phone, instead
+            of stacking into three rows above every screen. The active tab is
+            scrolled into view on arrival. */}
+        <nav className="flex gap-1 pb-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
           {links.map((l) => {
             const active = isActive(l.href);
             return (
               <Link
                 key={l.href}
                 href={l.href}
+                ref={active ? activeTabRef : undefined}
                 className={[
                   'px-3 py-1.5 text-sm rounded-md whitespace-nowrap transition-colors',
                   active

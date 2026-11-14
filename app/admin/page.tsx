@@ -354,7 +354,7 @@ export default function AdminOrdersPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
-        <h1 className="text-2xl font-semibold">Orders</h1>
+        <h1 className="text-2xl font-semibold">Deliveries</h1>
         <div className="flex gap-2 flex-wrap justify-end">
           <button onClick={exportCSV} className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50">
             Export CSV

@@ -11,10 +11,10 @@ export function createClient() {
         getAll() { return cookieStore.getAll(); },
         setAll(cookiesToSet) {
           try {
-            // Session-only auth cookies: stripping the lifetime makes them
-            // die with the browser, so every fresh open signs in again.
+            // Thirty-day sign-ins (the browser client and the middleware say
+            // the same, and all three must agree).
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, { ...options, maxAge: undefined, expires: undefined })
+              cookieStore.set(name, value, { ...options, maxAge: 60 * 60 * 24 * 30 })
             );
           } catch { /* server component, ignore */ }
         },

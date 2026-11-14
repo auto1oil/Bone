@@ -8,9 +8,16 @@
 // nothing when signed out (login/public pages).
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase-browser';
 
+// Only where money and customer terms are on screen. A driver's ticket or a
+// lessor's load list carries nothing worth tracing, and the tiling makes
+// every page look faded.
+const WATERMARKED = ['/work-orders/orders', '/work-orders/approve', '/admin', '/haulers', '/contractor/rates', '/funder'];
+
 export default function Watermark() {
+  const pathname = usePathname() || '';
   const [label, setLabel] = useState<string | null>(null);
 
   useEffect(() => {
@@ -27,6 +34,7 @@ export default function Watermark() {
   }, []);
 
   if (!label) return null;
+  if (!WATERMARKED.some((p) => pathname === p || pathname.startsWith(p + '/'))) return null;
 
   // Tile the label diagonally as a repeating SVG background.
   const text = encodeURIComponent(label);

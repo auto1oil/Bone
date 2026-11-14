@@ -84,3 +84,7 @@ html:is([data-theme="dark"],[data-theme="medium"]) input[type="checkbox"],
 html:is([data-theme="dark"],[data-theme="medium"]) input[type="radio"] { accent-color: #B45309; }
 
 
+
+/* A row that scrolls sideways without showing a scrollbar (tab rows). */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

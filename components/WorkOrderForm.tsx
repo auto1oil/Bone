@@ -241,6 +241,10 @@ export default function WorkOrderForm({
   // the job, address, phase, and their pay rate came with the load. The
   // server strips these from a hauler's save too — this is the visible half.
   const orderLocked = locked || (isHauler && !!draft.order_id);
+  // A dispatched ticket's job section is already filled and locked; fold it
+  // to one line so the driver lands on stamps, times and signatures.
+  const [showJob, setShowJob] = useState(false);
+  const jobFolded = isHauler && !!draft.order_id && !showJob;
 
   const set = (k: string, v: string) => setDraft((d) => ({ ...d, [k]: v }));
 
@@ -552,7 +556,26 @@ export default function WorkOrderForm({
       {workOrder?.hauler_id && <HaulerOnTicket haulerId={workOrder.hauler_id} />}
 
       <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">Job</h2>
+        <div className="flex items-baseline justify-between gap-2 mb-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Job</h2>
+          {isHauler && !!draft.order_id && (
+            <button type="button" onClick={() => setShowJob((v) => !v)} className="text-xs text-brand-700 hover:underline">
+              {jobFolded ? 'Show job details' : 'Hide job details'}
+            </button>
+          )}
+        </div>
+        {jobFolded ? (
+          <div className="text-sm text-gray-800 space-y-0.5">
+            <div className="font-medium">
+              {[draft.job_number ? `Job ${draft.job_number}` : null, draft.job_name].filter(Boolean).join(' · ') || 'Dispatched job'}
+              {draft.job_date ? ` · ${draft.job_date}` : ''}
+            </div>
+            {draft.job_address && <div className="text-xs"><MapLink address={draft.job_address} /></div>}
+            <div className="text-xs text-gray-500">
+              {[draft.driver_name, draft.unit_number ? `Truck ${draft.unit_number}` : null, draft.plate_number ? `Plate ${draft.plate_number}` : null].filter(Boolean).join(' · ') || 'Add your name, truck and plate under job details.'}
+            </div>
+          </div>
+        ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {/* The order book and the customer directory are Bone's — a
               hauling company cannot read either, by design, because the order
@@ -647,6 +670,7 @@ export default function WorkOrderForm({
             <input type="date" value={draft.job_date} onChange={(e) => set('job_date', e.target.value)} disabled={locked} className={input} />
           </label>
         </div>
+        )}
       </div>
 
       <div className="bg-white border border-gray-200 rounded-lg p-4">

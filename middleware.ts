@@ -13,10 +13,9 @@ export async function middleware(request: NextRequest) {
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request });
-          // Session-only auth cookies — no lifetime, so the sign-in dies
-          // with the browser/app and every fresh open logs in again.
+          // Thirty-day sign-ins, the same as the browser and server clients.
           cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, { ...options, maxAge: undefined, expires: undefined })
+            response.cookies.set(name, value, { ...options, maxAge: 60 * 60 * 24 * 30 })
           );
         },
       },

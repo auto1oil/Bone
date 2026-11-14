@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import AdminSubNav from '@/components/AdminSubNav';
 import WorkOrderList from '@/components/WorkOrderList';
 import AuditQueue from '@/components/AuditQueue';
+import TodayStrip from '@/components/TodayStrip';
 import FilterBar, { EMPTY_FILTER, matchesTicket, type ListFilter } from '@/components/FilterBar';
 import { createClient } from '@/lib/supabase-browser';
 import type { WorkOrder } from '@/lib/work-orders';
@@ -32,6 +33,11 @@ export default function WorkOrdersPage() {
     const supabase = createClient();
     supabase.from('haulers').select('id, name').order('name')
       .then(({ data }) => setHaulers((data as { id: string; name: string }[]) || []));
+    // Arriving from the day strip with ?status=… lands on that bucket.
+    try {
+      const wanted = new URLSearchParams(window.location.search).get('status') || '';
+      if (FILTERS.some((f) => f.key === wanted)) setFilter(wanted);
+    } catch { /* no window during prerender */ }
   }, []);
 
   const filterFn = useMemo(() => (wo: WorkOrder) => matchesTicket(bar, wo), [bar]);
@@ -61,6 +67,7 @@ export default function WorkOrdersPage() {
         roles={['office', 'admin', 'master_admin']}
       />
       <h1 className="text-2xl font-semibold mb-3">Tickets</h1>
+      <TodayStrip />
 
       {/* What's waiting on the office, front and center. */}
       <section className="mb-6">

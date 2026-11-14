@@ -1836,6 +1836,18 @@ create table if not exists public.feature_flags (
 );
 grant select, insert, update, delete on public.feature_flags to authenticated;
 alter table public.feature_flags enable row level security;
+-- Bone is a hauler: the delivery-run side of the original app (delivery
+-- board, delivery log, PO numbers, forms) starts hidden. "on conflict do
+-- nothing" keeps whatever a master admin has since decided.
+insert into public.feature_flags (key, enabled) values
+  ('admin:/admin', false),
+  ('admin:/admin/delivery-log', false),
+  ('admin:/admin/po', false),
+  ('admin:/admin/forms', false),
+  ('driver:/driver', false),
+  ('driver:/driver/delivery-log', false),
+  ('driver:/driver/customers', false)
+on conflict (key) do nothing;
 drop policy if exists "Anyone reads feature_flags" on public.feature_flags;
 create policy "Anyone reads feature_flags" on public.feature_flags
   for select to authenticated using (true);

@@ -15,8 +15,8 @@ anything else opens.
 **Put it on your phone like an app.** On iPhone, open the address in Safari,
 tap Share, then Add to Home Screen. On Android, open it in Chrome and tap
 Install app or Add to Home Screen. It then opens full screen with the Bone
-icon, and push notifications work. Sign-ins last only as long as the app is
-open, so expect to sign in again after closing it.
+icon, and push notifications work. A sign-in lasts thirty days on that
+phone; Sign out ends it at once.
 
 **Forgot your password?** Tap Forgot your password on the sign-in screen for
 an email link. If the email never arrives, an admin can set you a temporary

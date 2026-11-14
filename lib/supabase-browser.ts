@@ -9,6 +9,8 @@ export function createClient() {
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookieOptions: { maxAge: undefined, expires: undefined } }
+    // A sign-in lasts thirty days on the device, so a driver isn't typing a
+    // password at the pit every morning. Signing out still ends it at once.
+    { cookieOptions: { maxAge: 60 * 60 * 24 * 30 } }
   );
 }

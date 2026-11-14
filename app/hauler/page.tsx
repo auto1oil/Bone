@@ -203,10 +203,42 @@ export default function HaulerLoadsPage() {
       {loading ? (
         <p className="text-sm text-gray-500">Loading…</p>
       ) : loads.length === 0 ? (
-        <p className="text-sm text-gray-500">
-          Nothing yet. When Bone sends you a load it shows up here and you
-          get a notification.
-        </p>
+        <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+          <p className="text-sm text-gray-700">
+            Nothing yet. When Bone sends you a load it shows up here and your phone gets a notification.
+          </p>
+          <p className="text-sm font-medium text-gray-900">While you wait, get the company ready so Bone can dispatch to you:</p>
+          <ol className="space-y-2 text-sm">
+            <li className="flex items-start gap-2">
+              <span className={fleet.length > 0 ? 'text-emerald-600' : 'text-gray-400'}>{fleet.length > 0 ? '✓' : '○'}</span>
+              <span>
+                <Link href="/hauler/equipment" className="text-brand-700 font-medium hover:underline">Add your trucks</Link>
+                {' '}— unit numbers and what each one can pull. Bone picks from this list.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-gray-400">○</span>
+              <span>
+                <Link href="/hauler/company" className="text-brand-700 font-medium hover:underline">Upload your insurance and W-9</Link>
+                {' '}— without both on file, Bone won&apos;t send you work.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className={crew.length > 0 ? 'text-emerald-600' : 'text-gray-400'}>{crew.length > 0 ? '✓' : '○'}</span>
+              <span>
+                <Link href="/hauler/drivers" className="text-brand-700 font-medium hover:underline">Add your drivers</Link>
+                {' '}— each gets a login that sees only their haul tickets. Skip this if you drive yourself.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-gray-400">○</span>
+              <span>
+                <Link href="/hauler/availability" className="text-brand-700 font-medium hover:underline">Block out the days you can&apos;t run</Link>
+                {' '}— Bone checks this before sending.
+              </span>
+            </li>
+          </ol>
+        </div>
       ) : (
         <>
           {offered.length > 0 && (

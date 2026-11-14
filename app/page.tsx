@@ -13,7 +13,8 @@ export default async function Home() {
     .eq('id', user.id)
     .single();
 
-  if (profile?.role === 'admin' || profile?.role === 'master_admin') redirect('/admin');
+  // Admin's day is tickets to audit, not the delivery board.
+  if (profile?.role === 'admin' || profile?.role === 'master_admin') redirect('/work-orders');
   if (profile?.role === 'contractor') redirect('/contractor');
   if (profile?.role === 'hauler') redirect('/hauler');
   if (profile?.role === 'funder') redirect('/funder');
@@ -23,5 +24,6 @@ export default async function Home() {
   // invoices), so they land on /driver.
   if (profile?.role === 'office') redirect('/work-orders');
   if (profile?.role === 'labor') redirect('/driver/hours');
-  redirect('/driver');
+  // Drivers and mechanics: the day is the haul ticket.
+  redirect('/tickets');
 }

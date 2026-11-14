@@ -48,7 +48,7 @@ export default function MyTicketsPage() {
       <WorkOrderList
         query={`?mine=1${filter ? `&status=${encodeURIComponent(filter)}` : ''}`}
         hrefBase="/tickets"
-        emptyText="No tickets here yet. Tap “New ticket” after your next job."
+        emptyText="No tickets yet. A load your company assigns you shows up here with its ticket already started. For a job that didn't come as a load, tap New ticket."
       />
     </div>
   );
