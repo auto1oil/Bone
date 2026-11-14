@@ -57,6 +57,9 @@ Check in this order and report which one it was:
   flags any `off` stamp and any ticket with no fixes. Addresses are geocoded
   once into `geocode_cache` by `lib/geocode.ts` (Nominatim, then US Census;
   keyless). It never blocks a save, submit or approval.
+- The user guide is `public/user-guide.md`: served in-app at `/help` (the
+  nav's ? links to the role's section by heading slug) and the source of the
+  PDF. Keep it in step with features.
 - `supabase-setup.sql` — the canonical, re-runnable schema.
 - `migrations/` — one-off SQL for projects converted from the old Auto 1
   Dispatch schema. Never needed on a fresh project.

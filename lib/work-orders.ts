@@ -108,6 +108,9 @@ export type WorkOrder = {
   short_ticket_path: string | null;
   signature_path: string | null;
   submitted_by: string | null;
+  // The driver a hauling company handed the ticket to (may differ from who
+  // created it); the ticket follows a reassignment.
+  assigned_to: string | null;
   contractor_id: string | null;
   submitted_at: string | null;
   status: WorkOrderStatus;

@@ -112,6 +112,7 @@ export default function NavBar({ role, email }: { role: Role; email: string }) {
   const haulerLinks = [
     { href: '/hauler',              label: 'Loads' },
     { href: '/tickets',             label: 'Tickets' },
+    { href: '/hauler/pay',          label: 'Pay' },
     { href: '/hauler/drivers',      label: 'Drivers' },
     { href: '/hauler/equipment',    label: 'Trucks & Equipment' },
     { href: '/hauler/availability', label: 'Availability' },
@@ -162,6 +163,16 @@ export default function NavBar({ role, email }: { role: Role; email: string }) {
     return pathname === href || pathname.startsWith(href + '/');
   }
 
+  // The user guide section for this role.
+  const helpHref = '/help#' + (
+    role === 'admin' || role === 'master_admin' ? 'admin-running-the-company-side'
+    : role === 'office' ? 'admin-and-office-orders-sending-loads-approving-tickets'
+    : role === 'hauler' ? 'lessors-hauling-companies'
+    : role === 'driver' && haulerId ? 'lessors-drivers'
+    : role === 'driver' || role === 'mechanic' ? 'drivers-bones-own-crews'
+    : role === 'labor' ? 'hourly-employees-mechanics-and-labor'
+    : 'getting-in');
+
   // Bring the active tab into view when the row scrolls.
   const activeTabRef = useRef<HTMLAnchorElement>(null);
   useEffect(() => {
@@ -187,6 +198,14 @@ export default function NavBar({ role, email }: { role: Role; email: string }) {
           <div className="flex items-center gap-3 shrink-0">
             {userId && <MessageBubble userId={userId} href="/messages" />}
             {userId && <NotificationBell userId={userId} />}
+            <Link
+              href={helpHref}
+              aria-label="Help"
+              title="How to use this screen"
+              className="text-gray-500 hover:text-brand-700 text-sm font-semibold w-5 h-5 inline-flex items-center justify-center rounded-full border border-current"
+            >
+              ?
+            </Link>
             <Link
               href="/settings"
               aria-label="Settings"

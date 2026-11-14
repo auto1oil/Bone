@@ -39,7 +39,9 @@ next sign-in.
 
 A master admin can hide any tab for a whole role under Dashboard, then
 Permissions. The icons top right on every screen are Messages, the
-notification bell, Settings, and Sign out.
+notification bell, a **?** that opens this guide at your role's section,
+Settings, and Sign out. Under Settings, **Big text** makes everything larger
+on that phone.
 
 **If something you just did doesn't show up:** pull down to refresh, or close
 and reopen the app. After an update, the app offers an Update now button; tap
@@ -59,8 +61,9 @@ Users tab. Nobody can sign themselves up; every login starts here.
 1. Tap Add user. Enter name, email, phone, and pick the role: Driver / crew,
    Office, Contractor, Funder, Hauler, Admin, Mechanic, or Labor. For a Hauler
    login, also pick which company it belongs to.
-2. The app shows a temporary password once. Read it to the person or copy it
-   to them. They set their own on first sign-in.
+2. Leave "Email them a link" ticked and they get an invite to set their own
+   password. Untick it for a temporary password shown once, to read out.
+   Each row shows when that person last signed in, or "never signed in".
 3. To change someone's role later, open their row, change the role, and save.
    Only a master admin can make another master admin.
 4. Reset password sets a new temporary one when someone is locked out. Delete
@@ -159,7 +162,8 @@ Orders tab, then Create order, top right.
   type, unit, status, notes.
 
 Open an order later to edit it or to clear flags (below). The order page
-lists every ticket filed against it.
+lists every ticket filed against it. **Copy** on an order starts a new one
+with everything but the dates filled in, for jobs that repeat.
 
 ### 2. Send loads to a lessor (the offer)
 
@@ -346,9 +350,9 @@ company's work.
    shows red. You can also add Auto Liability, Cargo Insurance, Workers Comp,
    Operating Authority, a Signed Agreement, or anything else. Bone's office
    sees the same list, so there is no "did you send it".
-3. **Drivers** tab: add each driver with name, email and phone. The app gives
-   you a temporary password to pass on; the driver sets their own at first
-   sign-in. Your drivers see haul tickets and nothing else. Deactivate a
+3. **Drivers** tab: add each driver with name, email and phone. They get an
+   email link to set their own password, or untick the box for a temporary
+   password to read out. Your drivers see haul tickets and nothing else. Deactivate a
    driver who leaves; you can't delete the login, and only an admin can move
    it to another company.
 4. **Trucks & Equipment** tab: Add a unit with its unit number, truck type,
@@ -377,8 +381,10 @@ Bone's note, before you answer; Accept and Decline are there too.
 - The rate you accepted is the rate that was sent; nothing about a load can
   be changed from your side.
 
-**Haul Tickets** lists every ticket your drivers have filed, with its stage
-and the office's reason if one came back.
+**Tickets** lists every ticket your drivers have filed, with its stage and
+the office's reason if one came back. **Pay** shows where the money stands:
+what is still with the office, what Bone owes on its pay run, what went to
+Auto 1 Funding, and what came back to fix, with totals and a line per ticket.
 
 ### Auto 1 Funding and Factor Payment
 

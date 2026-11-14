@@ -39,7 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Apply the saved theme before paint to avoid a flash of light mode. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem('theme');if(t==='medium'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}`,
+            __html: `try{var t=localStorage.getItem('theme');if(t==='medium'||t==='dark')document.documentElement.dataset.theme=t;if(localStorage.getItem('bigtext')==='1')document.documentElement.dataset.bigtext='1';}catch(e){}`,
           }}
         />
       </head>

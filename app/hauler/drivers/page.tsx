@@ -21,9 +21,10 @@ export default function HaulerDriversPage() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ full_name: '', email: '', phone: '' });
+  const [invite, setInvite] = useState(true);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const [created, setCreated] = useState<{ email: string; password: string } | null>(null);
+  const [created, setCreated] = useState<{ email: string; password: string | null; invited?: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -48,7 +49,7 @@ export default function HaulerDriversPage() {
       const res = await fetch('/api/haulers/drivers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(draft),
+        body: JSON.stringify({ ...draft, invite }),
       });
       const json = await res.json();
       if (!json.ok) { setError(json.error || 'Could not add the driver.'); return; }
@@ -111,6 +112,10 @@ export default function HaulerDriversPage() {
               <input type="tel" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} className={input} />
             </label>
           </div>
+          <label className="mt-3 flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" checked={invite} onChange={(e) => setInvite(e.target.checked)} className="mt-0.5 h-4 w-4" />
+            <span>Email them a link to set their own password <span className="text-gray-500">(untick to get a temporary password to read out instead)</span></span>
+          </label>
           <button
             onClick={add}
             disabled={busy === 'add'}
@@ -121,7 +126,14 @@ export default function HaulerDriversPage() {
         </div>
       )}
 
-      {created && (
+      {created && created.invited && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-sm">
+          <p className="font-medium text-emerald-900 mb-1">Invite sent to {created.email}</p>
+          <p className="text-emerald-900">They set their own password from the link in the email, then sign in. If it doesn&apos;t arrive, add them again with the email box unticked for a temporary password.</p>
+          <button onClick={() => setCreated(null)} className="mt-2 text-xs text-gray-500 hover:underline">Dismiss</button>
+        </div>
+      )}
+      {created && !created.invited && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-sm">
           <p className="font-medium text-emerald-900 mb-1">Driver added</p>
           <p className="text-emerald-900">Send them these. They pick their own password on first sign-in.</p>

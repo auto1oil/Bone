@@ -88,3 +88,24 @@ html:is([data-theme="dark"],[data-theme="medium"]) input[type="radio"] { accent-
 /* A row that scrolls sideways without showing a scrollbar (tab rows). */
 .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Big text (Settings): everything is sized in rem, so one root change scales it all. */
+html[data-bigtext='1'] { font-size: 118%; }
+
+/* The in-app user guide (/help), rendered from public/user-guide.md. */
+.help-prose { color: #1f2937; font-size: 15px; line-height: 1.6; }
+.help-prose h1 { font-size: 1.6rem; font-weight: 700; margin: 0 0 .75rem; }
+.help-prose h2 { font-size: 1.25rem; font-weight: 700; margin: 2rem 0 .5rem; padding-top: .75rem; border-top: 1px solid #e5e7eb; }
+.help-prose h3 { font-size: 1.05rem; font-weight: 600; margin: 1.25rem 0 .35rem; }
+.help-prose h1 a, .help-prose h2 a, .help-prose h3 a { color: inherit; text-decoration: none; }
+.help-prose p { margin: .5rem 0; }
+.help-prose ul, .help-prose ol { margin: .5rem 0 .75rem 1.25rem; }
+.help-prose ul { list-style: disc; } .help-prose ol { list-style: decimal; }
+.help-prose li { margin: .25rem 0; }
+.help-prose strong { color: #0C0C0D; }
+.help-prose table { border-collapse: collapse; width: 100%; font-size: 13px; margin: .75rem 0; display: block; overflow-x: auto; }
+.help-prose th, .help-prose td { border: 1px solid #d1d5db; padding: .3rem .5rem; text-align: left; vertical-align: top; }
+.help-prose th { background: #f3f4f6; }
+.help-prose pre { background: #f3f4f6; padding: .75rem; border-radius: .375rem; font-size: 12px; overflow-x: auto; }
+.help-prose code { font-size: .9em; }
+.help-prose a { color: #242425; text-decoration: underline; }

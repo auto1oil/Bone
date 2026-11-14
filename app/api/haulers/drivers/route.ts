@@ -14,6 +14,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
+import { SITE_URL_FALLBACK } from '@/lib/brand';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -67,26 +68,38 @@ export async function POST(req: Request) {
   if (!email) return NextResponse.json({ ok: false, error: 'enter their email' }, { status: 400 });
 
   const admin = createAdminClient();
-  const password = tempPassword();
+  const alreadyMsg = 'Someone already signs in with that email. Use a different one, or ask Bone to move that login to your company.';
 
-  const { data: created, error: createErr } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-  });
-  if (createErr || !created?.user) {
-    const msg = createErr?.message || 'could not create the login';
-    // The generic "already registered" is the one people actually hit, and it
-    // needs to say what to do about it rather than just failing.
-    return NextResponse.json(
-      {
-        ok: false,
-        error: /already/i.test(msg)
-          ? 'Someone already signs in with that email. Use a different one, or ask Bone to move that login to your company.'
-          : msg,
-      },
-      { status: 400 },
-    );
+  // Invite by email first; a temporary password only when the invite can't go.
+  const wantInvite = body.invite !== false;
+  let userId: string | null = null;
+  let password: string | null = null;
+  let invited = false;
+  if (wantInvite) {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || SITE_URL_FALLBACK;
+    const { data: inv, error: invErr } = await admin.auth.admin.inviteUserByEmail(email, {
+      data: fullName ? { full_name: fullName } : undefined,
+      redirectTo: `${siteUrl}/reset-password`,
+    });
+    if (!invErr && inv?.user) { userId = inv.user.id; invited = true; }
+    else if (/already/i.test(invErr?.message || '')) {
+      return NextResponse.json({ ok: false, error: alreadyMsg }, { status: 400 });
+    }
+  }
+  if (!userId) {
+    password = tempPassword();
+    const { data: created, error: createErr } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    });
+    if (createErr || !created?.user) {
+      const msg = createErr?.message || 'could not create the login';
+      // The generic "already registered" is the one people actually hit, and it
+      // needs to say what to do about it rather than just failing.
+      return NextResponse.json({ ok: false, error: /already/i.test(msg) ? alreadyMsg : msg }, { status: 400 });
+    }
+    userId = created.user.id;
   }
 
   // The signup trigger has made a profile. Stamp it as this company's driver.
@@ -98,11 +111,11 @@ export async function POST(req: Request) {
       hauler_id: gate.haulerId,
       full_name: fullName || null,
       phone: phone || null,
-      must_change_password: true,
+      must_change_password: !invited,
       active: true,
     })
-    .eq('id', created.user.id);
+    .eq('id', userId);
   if (upErr) return NextResponse.json({ ok: false, error: upErr.message }, { status: 400 });
 
-  return NextResponse.json({ ok: true, email, password });
+  return NextResponse.json({ ok: true, email, password, invited });
 }

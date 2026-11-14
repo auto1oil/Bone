@@ -25,7 +25,7 @@ const ROLES: { value: Role; label: string; hint: string }[] = [
   { value: 'labor', label: 'Labor', hint: 'Time clock and tasks' },
 ];
 
-type Created = { email: string; password: string; role: string };
+type Created = { email: string; password: string | null; role: string; invited?: boolean };
 
 export default function AddUserPanel({
   onAdded,
@@ -43,6 +43,8 @@ export default function AddUserPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState<Created | null>(null);
+  // Email an invite link rather than reading out a temporary password.
+  const [invite, setInvite] = useState(true);
   const [copied, setCopied] = useState(false);
 
   const loadHaulers = useCallback(async () => {
@@ -65,11 +67,11 @@ export default function AddUserPanel({
       const res = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, email }),
+        body: JSON.stringify({ ...form, email, invite }),
       });
       const json = await res.json();
       if (!res.ok || !json.ok) { setError(json.error || 'Could not create the user.'); return; }
-      setCreated({ email: json.email, password: json.password, role: json.role });
+      setCreated({ email: json.email, password: json.password, role: json.role, invited: !!json.invited });
       setForm({ full_name: '', email: '', role: 'driver', phone: '', hauler_id: '' });
       setOpen(false);
       onAdded?.();
@@ -152,6 +154,11 @@ export default function AddUserPanel({
 
           {error && <p className="text-xs text-red-600">{error}</p>}
 
+          <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" checked={invite} onChange={(e) => setInvite(e.target.checked)} className="mt-0.5 h-4 w-4" />
+            <span>Email them a link to set their own password <span className="text-gray-500">(untick for a temporary password to read out)</span></span>
+          </label>
+
           <button
             onClick={create}
             disabled={busy || !form.email.trim()}
@@ -162,7 +169,14 @@ export default function AddUserPanel({
         </div>
       )}
 
-      {created && (
+      {created && created.invited && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 mt-3 text-sm">
+          <p className="font-medium text-emerald-900 mb-1">Invite sent to {created.email} ({created.role})</p>
+          <p className="text-emerald-900">They set their own password from the link in the email, then sign in. If it doesn&apos;t arrive, use Reset password on their row for a temporary one.</p>
+          <button onClick={() => setCreated(null)} className="mt-2 text-xs text-gray-500 hover:underline">Dismiss</button>
+        </div>
+      )}
+      {created && !created.invited && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 mt-3 text-sm">
           <p className="font-medium text-emerald-900 mb-1">User created ({created.role})</p>
           <p className="text-emerald-900">

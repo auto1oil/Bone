@@ -175,13 +175,13 @@ async function notifyHauler(load: HaulerLoad, by: string) {
         kind: 'hauler_load_offered',
         title: summary ? `${title} — ${summary}` : title,
         body: `Offered by ${by}. Accept or decline from your loads.`,
-        link: `/hauler`,
+        link: `/hauler/loads/${load.id}`,
       })),
     );
     await sendPushToUsers(ids, {
       title,
       body: summary || 'A load is waiting for your response.',
-      url: '/hauler',
+      url: `/hauler/loads/${load.id}`,
     });
   } catch {
     /* ignore — the load is placed either way */

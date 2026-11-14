@@ -54,7 +54,7 @@ const COLUMNS: Column[] = [
   { key: 'rate', label: 'Rate', get: (w) => (w.rate == null ? '' : `$${Number(w.rate).toFixed(2)}`) },
   { key: 'bills', label: 'Bills', get: (w) => `${billableQuantity(w).toFixed(2)} ${billableUnit(w)}` },
   { key: 'amount', label: 'Amount', get: (w) => `$${ticketAmount(w).toFixed(2)}` },
-  { key: 'photo', label: 'Photo', get: (w) => (w.ticket_photo_path ? 'yes' : 'MISSING') },
+  { key: 'photo', label: 'Photo', get: (w) => (w.ticket_photo_path ? 'yes' : w.hauler_load_id ? 'n/a (dispatched)' : 'MISSING') },
   { key: 'foreman', label: 'Foreman', get: (w) => (w.foreman_signature_path ? 'signed' : 'MISSING') },
   { key: 'place', label: 'Place check', get: (w) => {
     const c = w.place_check as PlaceCheck | null;
@@ -72,7 +72,9 @@ const DEFAULT_KEYS = ['job_date', 'driver_name', 'trucking_company', 'unit_numbe
 function needsEyes(w: WorkOrder): string | null {
   if (w.order_mismatch && !w.mismatch_cleared_at) return w.order_mismatch;
   if (!w.order_id) return 'no order — nothing to check it against';
-  if (!w.ticket_photo_path) return 'no photo of the paper ticket';
+  // A ticket started from a dispatched load IS the ticket — there is no paper
+  // to photograph. Only a hand-filed ticket is expected to carry one.
+  if (!w.ticket_photo_path && !w.hauler_load_id) return 'no photo of the paper ticket';
   // The foreman signing is what closes the day on site. Without it there is
   // nobody on the customer's side who agreed to these hours.
   if (!w.foreman_signature_path) return 'the job foreman never signed it';
@@ -293,6 +295,8 @@ export default function AuditQueue() {
                 <img src={photoUrl} alt="Paper ticket" className="mt-2 max-h-64 w-auto rounded border border-gray-200" />
               ) : w.ticket_photo_path ? (
                 <p className="mt-2 text-xs text-gray-400">Loading the paper-ticket photo…</p>
+              ) : w.hauler_load_id ? (
+                <p className="mt-2 text-xs text-gray-500">Started from a dispatched load — the app is the ticket, no paper to photograph.</p>
               ) : (
                 <p className="mt-2 text-xs text-red-600">No photo of the paper ticket.</p>
               )}

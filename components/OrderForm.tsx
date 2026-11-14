@@ -52,10 +52,16 @@ function toDraft(o: JobOrder | null): Draft {
   };
 }
 
-export default function OrderForm({ order }: { order: JobOrder | null }) {
+// `template` pre-fills a NEW order from an existing one (Copy): everything
+// but the dates and status, which start fresh.
+export default function OrderForm({ order, template = null }: { order: JobOrder | null; template?: JobOrder | null }) {
   const supabase = createClient();
   const router = useRouter();
-  const [draft, setDraft] = useState<Draft>(() => toDraft(order));
+  const [draft, setDraft] = useState<Draft>(() => {
+    if (!template) return toDraft(order);
+    const today = new Date().toISOString().slice(0, 10);
+    return { ...toDraft(template), start_date: today, end_date: today, status: 'open' };
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');

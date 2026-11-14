@@ -49,6 +49,8 @@ export default function SettingsPage() {
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [editFile, setEditFile] = useState<File | null>(null);
   const [theme, setTheme] = useState<'light' | 'medium' | 'dark'>('light');
+  // Big text: scales the whole app up a notch on this device.
+  const [bigText, setBigText] = useState(false);
   // Floating shortcut button (per-device, localStorage).
   const [fab, setFab] = useState<FabConfig | null>(null);
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -204,8 +206,17 @@ export default function SettingsPage() {
     try {
       const t = localStorage.getItem('theme');
       if (t === 'medium' || t === 'dark') setTheme(t);
+      setBigText(localStorage.getItem('bigtext') === '1');
     } catch { /* ignore */ }
   }, []);
+
+  function applyBigText(on: boolean) {
+    setBigText(on);
+    try {
+      if (on) { localStorage.setItem('bigtext', '1'); document.documentElement.dataset.bigtext = '1'; }
+      else { localStorage.removeItem('bigtext'); delete document.documentElement.dataset.bigtext; }
+    } catch { /* ignore */ }
+  }
 
   function applyTheme(t: 'light' | 'medium' | 'dark') {
     setTheme(t);
@@ -302,6 +313,13 @@ export default function SettingsPage() {
             </button>
           ))}
         </div>
+        <label className="mt-4 flex items-start gap-3 cursor-pointer">
+          <input type="checkbox" checked={bigText} onChange={(e) => applyBigText(e.target.checked)} className="mt-1 h-4 w-4" />
+          <span>
+            <span className="block text-sm font-medium text-gray-900">Big text</span>
+            <span className="block text-xs text-gray-500">Larger type and buttons on this device — for gloves, sunlight, or tired eyes.</span>
+          </span>
+        </label>
       </div>
 
       {/* Floating shortcut button — per-device. Appears on every screen; tap to

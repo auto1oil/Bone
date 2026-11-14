@@ -67,8 +67,12 @@ export default function UsersPage() {
   // Used by the role editor below to attach a hauler login to its company.
   const [haulers, setHaulers] = useState<{ id: string; name: string }[]>([]);
 
+  // When each login last signed in, from the app's own log.
+  const [lastSeen, setLastSeen] = useState<Record<string, string>>({});
   async function load() {
     setLoading(true);
+    fetch('/api/admin/users/last-seen', { cache: 'no-store' }).then((r) => r.json())
+      .then((j) => { if (j.ok) setLastSeen(j.last || {}); }).catch(() => null);
     // Hide customers from this list — they're managed in /admin/customers.
     const { data } = await supabase
       .from('profiles')
@@ -317,6 +321,9 @@ export default function UsersPage() {
                     </div>
                     <div className="text-xs text-gray-500 mt-0.5">
                       {u.email}{u.phone ? ` · ${u.phone}` : ''}
+                      <span className={`ml-2 ${lastSeen[u.id] ? 'text-gray-400' : 'text-amber-700'}`}>
+                        · {lastSeen[u.id] ? `last seen ${new Date(lastSeen[u.id]).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : 'never signed in'}
+                      </span>
                     </div>
                   </div>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${roleBadgeClass[u.role] || roleBadgeClass.driver}`}>

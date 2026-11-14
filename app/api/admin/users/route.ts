@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
+import { SITE_URL_FALLBACK } from '@/lib/brand';
 
 export const runtime = 'nodejs';
 
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: 'Admins only.' }, { status: 403 });
   }
 
-  let body: { email?: string; full_name?: string; role?: string; phone?: string; hauler_id?: string };
+  let body: { email?: string; full_name?: string; role?: string; phone?: string; hauler_id?: string; invite?: boolean };
   try { body = await req.json(); } catch { body = {}; }
 
   const email = (body.email || '').trim().toLowerCase();
@@ -40,18 +41,40 @@ export async function POST(req: Request) {
   }
 
   const admin = createAdminClient();
-  const password = tempPassword();
-  const { data: created, error } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true, // they can sign in immediately
-    user_metadata: full_name ? { full_name } : undefined,
-  });
-  if (error || !created?.user) {
-    const msg = /already.*registered|exists/i.test(error?.message || '')
-      ? 'That email already has an account.'
-      : (error?.message || 'Could not create the user.');
-    return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+
+  // Invite by email: they get a link and set their own password, so nothing
+  // is read out over the phone. If the invite can't be sent (mail not set
+  // up, rate limit), fall back to a temporary password so nobody is stuck.
+  const wantInvite = body.invite !== false;
+  let userId: string | null = null;
+  let password: string | null = null;
+  let invited = false;
+  if (wantInvite) {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || SITE_URL_FALLBACK;
+    const { data: inv, error: invErr } = await admin.auth.admin.inviteUserByEmail(email, {
+      data: full_name ? { full_name } : undefined,
+      redirectTo: `${siteUrl}/reset-password`,
+    });
+    if (!invErr && inv?.user) { userId = inv.user.id; invited = true; }
+    else if (/already.*registered|exists|been registered/i.test(invErr?.message || '')) {
+      return NextResponse.json({ ok: false, error: 'That email already has an account.' }, { status: 400 });
+    }
+  }
+  if (!userId) {
+    password = tempPassword();
+    const { data: created, error } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true, // they can sign in immediately
+      user_metadata: full_name ? { full_name } : undefined,
+    });
+    if (error || !created?.user) {
+      const msg = /already.*registered|exists/i.test(error?.message || '')
+        ? 'That email already has an account.'
+        : (error?.message || 'Could not create the user.');
+      return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+    }
+    userId = created.user.id;
   }
 
   // The handle_new_user trigger created the profile (default driver). Apply the
@@ -65,12 +88,13 @@ export async function POST(req: Request) {
       // Only a hauler login carries a company, and it is what scopes them to
       // their own fleet and loads — a hauler without one sees nothing.
       hauler_id: role === 'hauler' ? (body.hauler_id || null) : null,
-      must_change_password: true,
+      // An invited user sets their own password from the link.
+      must_change_password: !invited,
     })
-    .eq('id', created.user.id);
+    .eq('id', userId);
   if (upErr) {
     return NextResponse.json({ ok: false, error: upErr.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, email, password, role });
+  return NextResponse.json({ ok: true, email, password, role, invited });
 }

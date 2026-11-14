@@ -191,14 +191,22 @@ async function notify(
   title: string,
   detail: string,
 ) {
-  if (!wo.submitted_by) return;
   try {
-    await db.from('notifications').insert({
-      recipient_id: wo.submitted_by,
+    const recipients = new Set<string>();
+    if (wo.submitted_by) recipients.add(wo.submitted_by);
+    if (wo.assigned_to) recipients.add(wo.assigned_to);
+    // The company whose truck it was watches for pay, not just the driver.
+    if (wo.hauler_id) {
+      const { data: company } = await db.from('profiles').select('id').eq('hauler_id', wo.hauler_id).eq('role', 'hauler');
+      for (const p of (company as { id: string }[]) || []) recipients.add(p.id);
+    }
+    if (recipients.size === 0) return;
+    await db.from('notifications').insert([...recipients].map((recipient_id) => ({
+      recipient_id,
       kind,
       title: wo.job_number ? `${title} — job ${wo.job_number}` : title,
       body: detail || null,
       link: `/tickets/${wo.id}`,
-    });
+    })));
   } catch { /* ignore */ }
 }
