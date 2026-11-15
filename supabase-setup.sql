@@ -3128,3 +3128,199 @@ create policy "login_events master admin read" on public.login_events
 -- ==========================================================================
 -- DONE
 -- ==========================================================================
+
+-- ==========================================================================
+-- 50. Fleet — Bone's own trucks, trips, fuel, maintenance, documents
+-- ==========================================================================
+-- Lessors' trucks live in hauler_equipment; this is the company's own iron.
+-- Who may do what: every Bone staff login reads the fleet; drivers add their
+-- own trips and fuel and edit their own open trip; office and admin manage
+-- vehicles, maintenance and documents; only an admin deletes anything.
+-- A lessor's driver has role 'driver' too, so "staff" also means no company.
+
+create or replace function public.is_bone_staff()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.is_admin()
+      or (public.has_role(array['office', 'driver', 'mechanic', 'labor'])
+          and public.my_hauler_id() is null);
+$$;
+grant execute on function public.is_bone_staff() to authenticated;
+
+create table if not exists public.fleet_vehicles (
+  id                   uuid primary key default gen_random_uuid(),
+  unit_number          text not null,
+  name                 text,
+  vehicle_type         text,
+  year                 integer,
+  make                 text,
+  model                text,
+  vin                  text,
+  plate                text,
+  plate_state          text,
+  odometer             numeric(12,1),
+  assigned_driver_id   uuid references public.profiles(id) on delete set null,
+  registration_expires date,
+  insurance_expires    date,
+  inspection_due       date,
+  active               boolean not null default true,
+  notes                text,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+create index if not exists fleet_vehicles_active_idx on public.fleet_vehicles (active, unit_number);
+drop trigger if exists trg_fleet_vehicles_touch on public.fleet_vehicles;
+create trigger trg_fleet_vehicles_touch before update on public.fleet_vehicles
+  for each row execute function public.touch_updated_at();
+
+create table if not exists public.fleet_trips (
+  id             uuid primary key default gen_random_uuid(),
+  vehicle_id     uuid not null references public.fleet_vehicles(id) on delete cascade,
+  driver_id      uuid not null references public.profiles(id) on delete cascade,
+  started_at     timestamptz not null default now(),
+  ended_at       timestamptz,
+  start_odometer numeric(12,1),
+  end_odometer   numeric(12,1),
+  -- Miles by state for IFTA, e.g. {"UT": 120, "ID": 40}.
+  state_miles    jsonb,
+  work_order_id  uuid references public.work_orders(id) on delete set null,
+  notes          text,
+  created_at     timestamptz not null default now()
+);
+create index if not exists fleet_trips_vehicle_idx on public.fleet_trips (vehicle_id, started_at desc);
+create index if not exists fleet_trips_driver_idx  on public.fleet_trips (driver_id, started_at desc);
+
+create table if not exists public.fleet_fuel (
+  id           uuid primary key default gen_random_uuid(),
+  vehicle_id   uuid not null references public.fleet_vehicles(id) on delete cascade,
+  driver_id    uuid not null references public.profiles(id) on delete cascade,
+  bought_at    timestamptz not null default now(),
+  state        text,
+  gallons      numeric(10,3),
+  total_cost   numeric(12,2),
+  odometer     numeric(12,1),
+  vendor       text,
+  receipt_path text,
+  notes        text,
+  created_at   timestamptz not null default now()
+);
+create index if not exists fleet_fuel_vehicle_idx on public.fleet_fuel (vehicle_id, bought_at desc);
+create index if not exists fleet_fuel_when_idx    on public.fleet_fuel (bought_at desc);
+
+create table if not exists public.fleet_maintenance (
+  id                uuid primary key default gen_random_uuid(),
+  vehicle_id        uuid not null references public.fleet_vehicles(id) on delete cascade,
+  kind              text not null default 'Service',
+  done_at           date not null default current_date,
+  odometer          numeric(12,1),
+  description       text,
+  cost              numeric(12,2),
+  vendor            text,
+  next_due_on       date,
+  next_due_odometer numeric(12,1),
+  receipt_path      text,
+  created_by        uuid references public.profiles(id) on delete set null,
+  created_at        timestamptz not null default now()
+);
+create index if not exists fleet_maintenance_vehicle_idx on public.fleet_maintenance (vehicle_id, done_at desc);
+
+create table if not exists public.fleet_documents (
+  id          uuid primary key default gen_random_uuid(),
+  vehicle_id  uuid references public.fleet_vehicles(id) on delete cascade,
+  kind        text not null default 'Other',
+  file_name   text,
+  file_path   text not null,
+  expires_on  date,
+  notes       text,
+  uploaded_by uuid references public.profiles(id) on delete set null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists fleet_documents_vehicle_idx on public.fleet_documents (vehicle_id, expires_on);
+
+grant select, insert, update, delete on public.fleet_vehicles, public.fleet_trips, public.fleet_fuel,
+  public.fleet_maintenance, public.fleet_documents to authenticated;
+alter table public.fleet_vehicles    enable row level security;
+alter table public.fleet_trips       enable row level security;
+alter table public.fleet_fuel        enable row level security;
+alter table public.fleet_maintenance enable row level security;
+alter table public.fleet_documents   enable row level security;
+
+-- Vehicles: staff read; office + admin add and edit; admin deletes.
+drop policy if exists "fleet vehicles read" on public.fleet_vehicles;
+create policy "fleet vehicles read" on public.fleet_vehicles for select to authenticated using (public.is_bone_staff());
+drop policy if exists "fleet vehicles manage" on public.fleet_vehicles;
+create policy "fleet vehicles manage" on public.fleet_vehicles for insert to authenticated
+  with check (public.is_admin() or public.has_role(array['office']));
+drop policy if exists "fleet vehicles update" on public.fleet_vehicles;
+create policy "fleet vehicles update" on public.fleet_vehicles for update to authenticated
+  using (public.is_admin() or public.has_role(array['office']))
+  with check (public.is_admin() or public.has_role(array['office']));
+drop policy if exists "fleet vehicles delete" on public.fleet_vehicles;
+create policy "fleet vehicles delete" on public.fleet_vehicles for delete to authenticated using (public.is_admin());
+
+-- Trips: staff read; a driver adds their own and edits their own while open;
+-- office + admin edit any; admin deletes.
+drop policy if exists "fleet trips read" on public.fleet_trips;
+create policy "fleet trips read" on public.fleet_trips for select to authenticated using (public.is_bone_staff());
+drop policy if exists "fleet trips insert" on public.fleet_trips;
+create policy "fleet trips insert" on public.fleet_trips for insert to authenticated
+  with check (public.is_bone_staff() and (driver_id = auth.uid() or public.is_admin() or public.has_role(array['office'])));
+drop policy if exists "fleet trips update" on public.fleet_trips;
+create policy "fleet trips update" on public.fleet_trips for update to authenticated
+  using (public.is_admin() or public.has_role(array['office']) or (driver_id = auth.uid() and ended_at is null))
+  with check (public.is_admin() or public.has_role(array['office']) or driver_id = auth.uid());
+drop policy if exists "fleet trips delete" on public.fleet_trips;
+create policy "fleet trips delete" on public.fleet_trips for delete to authenticated using (public.is_admin());
+
+-- Fuel: staff read; a driver logs their own; office + admin edit any; admin deletes.
+drop policy if exists "fleet fuel read" on public.fleet_fuel;
+create policy "fleet fuel read" on public.fleet_fuel for select to authenticated using (public.is_bone_staff());
+drop policy if exists "fleet fuel insert" on public.fleet_fuel;
+create policy "fleet fuel insert" on public.fleet_fuel for insert to authenticated
+  with check (public.is_bone_staff() and (driver_id = auth.uid() or public.is_admin() or public.has_role(array['office'])));
+drop policy if exists "fleet fuel update" on public.fleet_fuel;
+create policy "fleet fuel update" on public.fleet_fuel for update to authenticated
+  using (public.is_admin() or public.has_role(array['office']))
+  with check (public.is_admin() or public.has_role(array['office']));
+drop policy if exists "fleet fuel delete" on public.fleet_fuel;
+create policy "fleet fuel delete" on public.fleet_fuel for delete to authenticated using (public.is_admin());
+
+-- Maintenance: staff read; staff log work (a mechanic in the shop); office +
+-- admin edit; admin deletes.
+drop policy if exists "fleet maintenance read" on public.fleet_maintenance;
+create policy "fleet maintenance read" on public.fleet_maintenance for select to authenticated using (public.is_bone_staff());
+drop policy if exists "fleet maintenance insert" on public.fleet_maintenance;
+create policy "fleet maintenance insert" on public.fleet_maintenance for insert to authenticated with check (public.is_bone_staff());
+drop policy if exists "fleet maintenance update" on public.fleet_maintenance;
+create policy "fleet maintenance update" on public.fleet_maintenance for update to authenticated
+  using (public.is_admin() or public.has_role(array['office']))
+  with check (public.is_admin() or public.has_role(array['office']));
+drop policy if exists "fleet maintenance delete" on public.fleet_maintenance;
+create policy "fleet maintenance delete" on public.fleet_maintenance for delete to authenticated using (public.is_admin());
+
+-- Documents: staff read; office, admin and mechanics add; office + admin edit; admin deletes.
+drop policy if exists "fleet documents read" on public.fleet_documents;
+create policy "fleet documents read" on public.fleet_documents for select to authenticated using (public.is_bone_staff());
+drop policy if exists "fleet documents insert" on public.fleet_documents;
+create policy "fleet documents insert" on public.fleet_documents for insert to authenticated
+  with check (public.is_admin() or public.has_role(array['office', 'mechanic']));
+drop policy if exists "fleet documents update" on public.fleet_documents;
+create policy "fleet documents update" on public.fleet_documents for update to authenticated
+  using (public.is_admin() or public.has_role(array['office']))
+  with check (public.is_admin() or public.has_role(array['office']));
+drop policy if exists "fleet documents delete" on public.fleet_documents;
+create policy "fleet documents delete" on public.fleet_documents for delete to authenticated using (public.is_admin());
+
+-- Receipts and papers: a private bucket staff read and write; admin and
+-- office remove.
+insert into storage.buckets (id, name, public)
+values ('fleet-docs', 'fleet-docs', false)
+on conflict (id) do nothing;
+drop policy if exists "fleet files read" on storage.objects;
+create policy "fleet files read" on storage.objects for select to authenticated
+  using (bucket_id = 'fleet-docs' and public.is_bone_staff());
+drop policy if exists "fleet files write" on storage.objects;
+create policy "fleet files write" on storage.objects for insert to authenticated
+  with check (bucket_id = 'fleet-docs' and public.is_bone_staff());
+drop policy if exists "fleet files delete" on storage.objects;
+create policy "fleet files delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'fleet-docs' and (public.is_admin() or public.has_role(array['office'])));

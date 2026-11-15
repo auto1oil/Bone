@@ -90,9 +90,7 @@ ticket bills against. Approving a ticket raises its invoice against that item.
 
 ### Tickets, then Setup
 
-Four cards. **QuickBooks item**, above. **Fleet program**: paste Bone's One
-Glovebox fleet ID and the Fleet tab opens the fleet program for every driver.
-**Factoring app** (master admin
+Three cards. **QuickBooks item**, above. **Factoring app** (master admin
 only): paste the endpoint Auto 1 Funding gave Bone, ending in /tickets, and
 the API key, tap Save, then Test connection. Green means connected; red tells
 you exactly what's wrong. **Job rates**: add the agreed rate per job number
@@ -303,12 +301,34 @@ they approve it.
 
 ### Fleet
 
-The **Fleet** tab is One Glovebox's fleet program inside this app: trips and
-IFTA miles, fuel logging, receipts, maintenance, registrations, repairs and
-documents. Sign in there once with the One Glovebox account your fleet invite
-went to, and it stays signed in. Trip tracking needs the location permission
-when the phone asks. Push notifications from the fleet program don't come
-through this tab; its reminder emails still do.
+The **Fleet** tab is Bone's own truck program. Along the top: Trucks, Trips,
+Fuel, Maintenance, Documents, IFTA.
+
+**Trips.** Before you roll, open Trips, pick your truck (it's already picked
+if it's your usual one), type the odometer and tap **Start trip**. When the
+run is done, tap **End trip**, type the end odometer and split the miles by
+state: one line per state you drove in, or one line if you stayed in Utah.
+The split has to add up to the odometer difference. Those state miles are
+what Bone's IFTA fuel-tax return is built from, so put them in every time.
+
+**Fuel.** Every fill-up: pick the truck, the state you bought it in, gallons,
+total dollars, odometer, the station, and snap the receipt. Save. The office
+can fix a wrong entry; you can't delete one.
+
+**Maintenance.** Log oil changes, repairs, tires, inspections: what was done,
+the cost, the shop, and when it's next due by date or odometer. Anything due
+shows at the top in amber.
+
+**Trucks and Documents.** Open a truck to see its papers (registration,
+insurance, inspection) and everything logged against it. Red means expired,
+amber means due within 30 days. Documents holds the paper itself: upload a
+photo or PDF with its expiry date. The office adds trucks and documents;
+mechanics can add documents too.
+
+**IFTA** (office and admin). Pick the quarter: miles by state off the trips,
+gallons bought by state off the fuel, the fleet MPG, and the net taxable
+gallons per state. Export CSV for the return. The warning box lists trips
+missing their state split so you can chase them before filing.
 
 ### Tasks, Reminders, Messages
 

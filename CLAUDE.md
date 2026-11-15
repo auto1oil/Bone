@@ -57,10 +57,13 @@ Check in this order and report which one it was:
   flags any `off` stamp and any ticket with no fixes. Addresses are geocoded
   once into `geocode_cache` by `lib/geocode.ts` (Nominatim, then US Census;
   keyless). It never blocks a save, submit or approval.
-- Fleet tab (`app/fleet`): One Glovebox's fleet program framed in-app for
-  Bone's own staff, locked to the fleet ID in app_settings `fleet_embed_id`
-  (set on Tickets → Setup, read via `/api/fleet/embed`). The embed contract
-  is `docs/one-glovebox-embed.md`. Lessors' logins never see it.
+- Fleet tab (`app/fleet`): Bone's own fleet program, built in-app with its
+  own tables (`fleet_vehicles`, `fleet_trips`, `fleet_fuel`,
+  `fleet_maintenance`, `fleet_documents`; files in the `fleet-docs` bucket).
+  Trucks → trips with odometer and miles by state → fuel by state → the IFTA
+  quarter summary (`iftaSummary` in `lib/fleet.ts`). Bone staff only
+  (`is_bone_staff()`): drivers log their own trips and fuel, office/admin
+  edit everything, only admin deletes. Lessors' logins never see it.
 - The user guide is `public/user-guide.md`: served in-app at `/help` (the
   nav's ? links to the role's section by heading slug) and the source of the
   PDF. Keep it in step with features.

@@ -1,5 +1,5 @@
-// The Fleet tab: One Glovebox's fleet program framed inside Bone, for
-// Bone's own people. Lessors run their own fleets elsewhere, so their logins
+// The Fleet tab: Bone's own trucks, trips, fuel, maintenance, documents and
+// IFTA, for Bone's own people. Lessors run their own fleets, so their logins
 // are sent back to their side.
 
 import { redirect } from 'next/navigation';
