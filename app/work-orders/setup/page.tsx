@@ -34,6 +34,10 @@ export default function WorkOrderSetupPage() {
   // The factoring hand-off: where approved factor-pay tickets get POSTed.
   // Master admin only — it's a credential, and RLS enforces the same line.
   const [isMaster, setIsMaster] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  // One Glovebox fleet ID: the Fleet tab frames the fleet program with it.
+  const [fleetId, setFleetId] = useState('');
+  const [savedFleet, setSavedFleet] = useState(false);
   const [factorUrl, setFactorUrl] = useState('');
   const [factorKey, setFactorKey] = useState('');
   const [savedFactor, setSavedFactor] = useState(false);
@@ -48,17 +52,19 @@ export default function WorkOrderSetupPage() {
       const { data } = await supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['work_order_qb_item_id', 'work_order_qb_item_name', 'factoring_webhook_url', 'factoring_api_key']);
+        .in('key', ['work_order_qb_item_id', 'work_order_qb_item_name', 'factoring_webhook_url', 'factoring_api_key', 'fleet_embed_id']);
       const m = new Map(((data as { key: string; value: string }[]) || []).map((r) => [r.key, r.value]));
       setItemId(m.get('work_order_qb_item_id') || '');
       setItemName(m.get('work_order_qb_item_name') || '');
       setFactorUrl(m.get('factoring_webhook_url') || '');
       setFactorKey(m.get('factoring_api_key') || '');
+      setFleetId(m.get('fleet_embed_id') || '');
       setFactorUrlSaved(!!(m.get('factoring_webhook_url') || '').trim());
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: me } = await supabase.from('profiles').select('role').eq('id', user.id).single();
         setIsMaster(me?.role === 'master_admin');
+        setIsAdmin(me?.role === 'master_admin' || me?.role === 'admin');
       }
       await loadRates();
       // The QuickBooks catalog is only reachable through the server route.
@@ -93,6 +99,13 @@ export default function WorkOrderSetupPage() {
     ], { onConflict: 'key' });
     setSavedItem(true);
     setTimeout(() => setSavedItem(false), 1500);
+  }
+
+  async function saveFleet() {
+    setSavedFleet(false);
+    await supabase.from('app_settings').upsert([{ key: 'fleet_embed_id', value: fleetId.trim() }], { onConflict: 'key' });
+    setSavedFleet(true);
+    setTimeout(() => setSavedFleet(false), 1500);
   }
 
   async function saveFactoring() {
@@ -214,6 +227,31 @@ export default function WorkOrderSetupPage() {
             {testResult.ok ? '✓' : '✗'} {testResult.message}
           </p>
         )}
+      </div>
+      )}
+
+      {isAdmin && (
+      <div className="bg-white border border-gray-200 rounded-lg p-4 mb-5">
+        <h2 className="font-semibold mb-1">Fleet program (One Glovebox)</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          The Fleet tab opens One Glovebox inside this app for Bone&apos;s drivers: trips, IFTA miles,
+          fuel, receipts, maintenance, registrations, repairs, documents. Paste Bone&apos;s fleet ID
+          here — in One Glovebox it&apos;s under Settings → Admin → All users, on the owner&apos;s row
+          (&quot;Fleet ID&quot;, tap to copy). Clear it to switch the tab off.
+        </p>
+        <label className="text-xs text-gray-600 block max-w-2xl">Fleet ID
+          <input value={fleetId} onChange={(e) => setFleetId(e.target.value)}
+            placeholder="00000000-0000-0000-0000-000000000000" className={`${input} w-full block mt-1 font-mono`} />
+        </label>
+        <div className="mt-3 flex items-center gap-2 flex-wrap">
+          <button onClick={saveFleet} className="px-3 py-1.5 text-sm bg-brand-700 text-white rounded-md hover:bg-brand-900 font-medium">
+            Save
+          </button>
+          {fleetId.trim() && (
+            <a href="/fleet" className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 font-medium">Open the Fleet tab</a>
+          )}
+          {savedFleet && <span className="text-xs text-emerald-700">Saved ✓</span>}
+        </div>
       </div>
       )}
 

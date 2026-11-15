@@ -53,6 +53,7 @@ export const FEATURES: Feature[] = [
   { group: 'admin', key: 'admin:/admin/dashboard', label: 'Dashboard' },
   { group: 'admin', key: 'admin:/admin/po', label: 'PO #' },
   { group: 'admin', key: 'admin:/admin/hours', label: 'Time Clock' },
+  { group: 'admin', key: 'admin:/fleet', label: 'Fleet' },
   { group: 'admin', key: 'admin:/admin/users', label: 'Users' },
   // Office
   { group: 'office', key: 'office:/work-orders/orders', label: 'Orders' },
@@ -69,6 +70,7 @@ export const FEATURES: Feature[] = [
   { group: 'driver', key: 'driver:/driver/delivery-log', label: 'Delivery Log' },
   { group: 'driver', key: 'driver:/driver/customers', label: 'Customers' },
   { group: 'driver', key: 'driver:/driver/hours', label: 'Hours' },
+  { group: 'driver', key: 'driver:/fleet', label: 'Fleet' },
   { group: 'driver', key: 'driver:/tasks', label: 'Tasks' },
   { group: 'driver', key: 'driver:/reminders', label: 'Reminders' },
   // Contractor

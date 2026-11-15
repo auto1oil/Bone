@@ -90,7 +90,9 @@ ticket bills against. Approving a ticket raises its invoice against that item.
 
 ### Tickets, then Setup
 
-Three cards. **QuickBooks item**, above. **Factoring app** (master admin
+Four cards. **QuickBooks item**, above. **Fleet program**: paste Bone's One
+Glovebox fleet ID and the Fleet tab opens the fleet program for every driver.
+**Factoring app** (master admin
 only): paste the endpoint Auto 1 Funding gave Bone, ending in /tickets, and
 the API key, tap Save, then Test connection. Green means connected; red tells
 you exactly what's wrong. **Job rates**: add the agreed rate per job number
@@ -298,6 +300,15 @@ Below it, Log hours lets you record a day's hours with a note, and the list
 shows your week. You can't edit or delete an entry once saved; use **Forgot
 to clock in or out?** to send the admin the right times with a reason, and
 they approve it.
+
+### Fleet
+
+The **Fleet** tab is One Glovebox's fleet program inside this app: trips and
+IFTA miles, fuel logging, receipts, maintenance, registrations, repairs and
+documents. Sign in there once with the One Glovebox account your fleet invite
+went to, and it stays signed in. Trip tracking needs the location permission
+when the phone asks. Push notifications from the fleet program don't come
+through this tab; its reminder emails still do.
 
 ### Tasks, Reminders, Messages
 
