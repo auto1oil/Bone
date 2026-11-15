@@ -64,6 +64,12 @@ Check in this order and report which one it was:
   quarter summary (`iftaSummary` in `lib/fleet.ts`). Bone staff only
   (`is_bone_staff()`): drivers log their own trips and fuel, office/admin
   edit everything, only admin deletes. Lessors' logins never see it.
+  Scanning: `/api/fleet/scan` reads a photo already in `fleet-docs`
+  (registration card, fuel receipt, shop bill) with Claude vision and returns
+  the fields in `lib/fleet-scan.ts`; `components/ScanButton.tsx` uploads,
+  calls it and hands the form the fields plus the photo's path. Needs
+  `ANTHROPIC_API_KEY` on Vercel; without it the button explains and the
+  forms still work by hand. The scan is a suggestion, never a save.
 - The user guide is `public/user-guide.md`: served in-app at `/help` (the
   nav's ? links to the role's section by heading slug) and the source of the
   PDF. Keep it in step with features.

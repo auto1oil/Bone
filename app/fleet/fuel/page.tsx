@@ -2,8 +2,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import FleetNav from '@/components/FleetNav';
 import FleetUpload from '@/components/FleetUpload';
+import ScanButton from '@/components/ScanButton';
 import { useFleet, input, label, btn, fmtWhen, fmtMoney, nowLocalInput, fromLocalInput } from '@/lib/use-fleet';
 import { IFTA_JURISDICTIONS, type FleetFuel } from '@/lib/fleet';
+import { sv, sn, matchVehicle, type FuelScan } from '@/lib/fleet-scan';
 
 // Fuel bought, with the receipt. The state it was bought in and the gallons
 // are what IFTA needs; the cost and odometer are for the office.
@@ -17,6 +19,27 @@ export default function FleetFuelPage() {
   const blank = { vehicle_id: '', bought_at: nowLocalInput(), state: 'UT', gallons: '', total_cost: '', odometer: '', vendor: '', notes: '' };
   const [draft, setDraft] = useState(blank);
   const [receipt, setReceipt] = useState<string | null>(null);
+  const [scanNote, setScanNote] = useState('');
+
+  // A scanned receipt fills the fill-up and becomes its receipt photo.
+  function applyScan(f: FuelScan, path: string) {
+    setReceipt(path);
+    const match = matchVehicle(vehicles, { plate_or_unit: f.plate_or_unit });
+    const st = sv(f.state).toUpperCase();
+    setDraft((d) => ({
+      ...d,
+      vehicle_id: match?.id || d.vehicle_id,
+      bought_at: sv(f.bought_at).slice(0, 16) || d.bought_at,
+      state: (IFTA_JURISDICTIONS as readonly string[]).includes(st) ? st : d.state,
+      gallons: sn(f.gallons) || d.gallons,
+      total_cost: sn(f.total_cost) || d.total_cost,
+      odometer: sn(f.odometer) || d.odometer,
+      vendor: sv(f.vendor) || d.vendor,
+      notes: f.fuel_type && !/diesel/i.test(sv(f.fuel_type)) ? [d.notes, sv(f.fuel_type)].filter(Boolean).join(' · ') : d.notes,
+    }));
+    const got = [f.gallons != null && 'gallons', f.total_cost != null && 'total', f.state && 'state', f.bought_at && 'date'].filter(Boolean);
+    setScanNote(got.length ? `Read ${got.join(', ')} off the receipt. Check the numbers, pick the truck if it isn't, then save.` : 'Could not read much off that one. Fill it in by hand; the photo is attached.');
+  }
 
   const load = useCallback(async () => {
     const { data } = await supabase.from('fleet_fuel').select('*').order('bought_at', { ascending: false }).limit(300);
@@ -44,7 +67,7 @@ export default function FleetFuelPage() {
     });
     setBusy(false);
     if (err) { setError(err.message); return; }
-    setDraft({ ...blank, vehicle_id: draft.vehicle_id, bought_at: nowLocalInput() }); setReceipt(null);
+    setDraft({ ...blank, vehicle_id: draft.vehicle_id, bought_at: nowLocalInput() }); setReceipt(null); setScanNote('');
     load();
   }
 
@@ -68,6 +91,10 @@ export default function FleetFuelPage() {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-2">Log a fill-up</h2>
         {loading ? <p className="text-sm text-gray-500">Loading…</p> : (
           <>
+            <div className="flex items-center gap-3 flex-wrap mb-3">
+              <ScanButton kind="fuel" folder="fuel" label="Scan receipt" onResult={(f, p) => applyScan(f as FuelScan, p)} />
+              <span className="text-xs text-gray-500">{scanNote || 'Snap the receipt and the gallons, total, state, station and time fill in. Or type it below.'}</span>
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <label><span className={label}>Truck</span>
                 <select value={draft.vehicle_id} onChange={(e) => set('vehicle_id', e.target.value)} className={input}>

@@ -311,19 +311,31 @@ state: one line per state you drove in, or one line if you stayed in Utah.
 The split has to add up to the odometer difference. Those state miles are
 what Bone's IFTA fuel-tax return is built from, so put them in every time.
 
-**Fuel.** Every fill-up: pick the truck, the state you bought it in, gallons,
-total dollars, odometer, the station, and snap the receipt. Save. The office
-can fix a wrong entry; you can't delete one.
+**Fuel.** Every fill-up, the quick way: tap **Scan receipt**, take a photo of
+the receipt, and the gallons, total, state, station and time fill themselves
+in. Check the numbers, pick the truck if it didn't, Save. The photo is kept as
+the receipt. Or type it in by hand: truck, state, gallons, total dollars,
+odometer, station. The office can fix a wrong entry; you can't delete one.
 
-**Maintenance.** Log oil changes, repairs, tires, inspections: what was done,
-the cost, the shop, and when it's next due by date or odometer. Anything due
-shows at the top in amber.
+**Maintenance.** Got a shop bill, a parts invoice or a handwritten service
+note? Tap **Scan bill** and photograph it. The date, shop, total, what was
+done and the next-due fill in, and the paper is attached to the entry. Check
+it and Save. Or tap Log work and type it: what was done, the cost, the shop,
+and when it's next due by date or odometer. Anything due shows at the top in
+amber.
 
-**Trucks and Documents.** Open a truck to see its papers (registration,
-insurance, inspection) and everything logged against it. Red means expired,
-amber means due within 30 days. Documents holds the paper itself: upload a
-photo or PDF with its expiry date. The office adds trucks and documents;
-mechanics can add documents too.
+**Trucks and Documents.** Adding a truck? Tap **Scan registration**, snap the
+registration card, and the plate, VIN, year, make, model and expiry fill in.
+Add the unit number and save; the card is filed under Documents as the
+registration. Renewed it? Open the truck, Edit, Scan new registration. Open a
+truck to see its papers (registration, insurance, inspection) and everything
+logged against it. Red means expired, amber means due within 30 days.
+Documents holds the paper itself: upload a photo or PDF with its expiry date.
+The office adds trucks and documents; mechanics can add documents too.
+
+Scanning reads the photo and makes its best guess; it never saves anything
+on its own. Always glance over the numbers before you tap Save. A straight,
+well-lit, close photo reads best.
 
 **IFTA** (office and admin). Pick the quarter: miles by state off the trips,
 gallons bought by state off the fuel, the fleet MPG, and the net taxable

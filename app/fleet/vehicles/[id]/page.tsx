@@ -3,8 +3,10 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import FleetNav from '@/components/FleetNav';
+import ScanButton from '@/components/ScanButton';
 import { useFleet, input, label, btn, btnQuiet, fmtDate, fmtWhen, fmtMoney } from '@/lib/use-fleet';
 import { VEHICLE_TYPES, tripMiles, dueTone, type FleetVehicle, type FleetTrip, type FleetFuel, type FleetMaintenance, type FleetDocument } from '@/lib/fleet';
+import { sv, sn, pick, type RegistrationScan } from '@/lib/fleet-scan';
 
 // One truck: its details (editable by office and admin), the papers that run
 // out, and everything logged against it — trips, fuel, maintenance,
@@ -14,7 +16,8 @@ export default function FleetVehiclePage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
   const router = useRouter();
-  const { supabase, canManage, isAdmin, people, nameOf, loading: ctxLoading } = useFleet();
+  const { supabase, meId, canManage, isAdmin, people, nameOf, loading: ctxLoading } = useFleet();
+  const [regPath, setRegPath] = useState<string | null>(null);
   const [v, setV] = useState<FleetVehicle | null>(null);
   const [trips, setTrips] = useState<FleetTrip[]>([]);
   const [fuel, setFuel] = useState<FleetFuel[]>([]);
@@ -46,13 +49,34 @@ export default function FleetVehiclePage() {
     if (!v) return;
     const s = (x: unknown) => (x == null ? '' : String(x));
     setDraft({ unit_number: s(v.unit_number), name: s(v.name), vehicle_type: s(v.vehicle_type), year: s(v.year), make: s(v.make), model: s(v.model), vin: s(v.vin), plate: s(v.plate), plate_state: s(v.plate_state), odometer: s(v.odometer), assigned_driver_id: s(v.assigned_driver_id), registration_expires: s(v.registration_expires), insurance_expires: s(v.insurance_expires), inspection_due: s(v.inspection_due), notes: s(v.notes) });
+    setRegPath(null);
     setEditing(true);
+  }
+  function applyScan(f: RegistrationScan, path: string) {
+    setRegPath(path);
+    setDraft((d) => ({
+      ...d,
+      plate: sv(f.plate) || d.plate,
+      plate_state: sv(f.plate_state).toUpperCase() || d.plate_state,
+      vin: sv(f.vin).toUpperCase() || d.vin,
+      year: sn(f.year) || d.year,
+      make: sv(f.make) || d.make,
+      model: sv(f.model) || d.model,
+      vehicle_type: f.vehicle_type ? pick(f.vehicle_type, VEHICLE_TYPES, (d.vehicle_type || 'Other') as (typeof VEHICLE_TYPES)[number]) : d.vehicle_type,
+      registration_expires: sv(f.registration_expires) || d.registration_expires,
+    }));
   }
   async function saveEdit() {
     if (!v) return;
     setBusy(true); setError('');
     const num = (x: string) => (x.trim() === '' ? null : Number(x));
     const txt = (x: string) => (x.trim() === '' ? null : x.trim());
+    if (regPath) {
+      await supabase.from('fleet_documents').insert({
+        vehicle_id: v.id, kind: 'Registration', file_name: `Registration · Unit ${draft.unit_number.trim() || v.unit_number}`,
+        file_path: regPath, expires_on: txt(draft.registration_expires), uploaded_by: meId,
+      });
+    }
     const { error: err } = await supabase.from('fleet_vehicles').update({
       unit_number: draft.unit_number.trim() || v.unit_number, name: txt(draft.name), vehicle_type: txt(draft.vehicle_type),
       year: num(draft.year), make: txt(draft.make), model: txt(draft.model), vin: txt(draft.vin), plate: txt(draft.plate),
@@ -62,7 +86,7 @@ export default function FleetVehiclePage() {
     }).eq('id', v.id);
     setBusy(false);
     if (err) { setError(err.message); return; }
-    setEditing(false); load();
+    setEditing(false); setRegPath(null); load();
   }
   async function setActive(active: boolean) {
     if (!v) return;
@@ -107,6 +131,10 @@ export default function FleetVehiclePage() {
 
       {editing ? (
         <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="flex items-center gap-3 flex-wrap mb-3">
+            <ScanButton kind="registration" folder="documents" label="Scan new registration" onResult={(f, p) => applyScan(f as RegistrationScan, p)} />
+            <span className="text-xs text-gray-500">{regPath ? 'Filled from the card. Check it and save; the photo is filed under Documents.' : 'Renewed the registration? Snap the new card and the plate and expiry update.'}</span>
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <label><span className={label}>Unit #</span><input value={draft.unit_number} onChange={(e) => set('unit_number', e.target.value)} className={input} /></label>
             <label><span className={label}>Name</span><input value={draft.name} onChange={(e) => set('name', e.target.value)} className={input} /></label>

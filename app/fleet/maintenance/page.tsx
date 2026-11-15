@@ -2,8 +2,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import FleetNav from '@/components/FleetNav';
 import FleetUpload from '@/components/FleetUpload';
+import ScanButton from '@/components/ScanButton';
 import { useFleet, input, label, btn, fmtDate, fmtMoney } from '@/lib/use-fleet';
 import { MAINTENANCE_KINDS, dueTone, type FleetMaintenance } from '@/lib/fleet';
+import { sv, sn, pick, matchVehicle, type MaintenanceScan } from '@/lib/fleet-scan';
 
 // Maintenance and repairs: what was done, what it cost, and when the next
 // one is due — by date or by odometer. The due list at the top is the shop's
@@ -19,6 +21,29 @@ export default function FleetMaintenancePage() {
   const [draft, setDraft] = useState(blank);
   const [receipt, setReceipt] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [scanNote, setScanNote] = useState('');
+
+  // A scanned bill, invoice or service record fills the entry and is kept
+  // as its paperwork.
+  function applyScan(f: MaintenanceScan, path: string) {
+    setReceipt(path);
+    setAdding(true);
+    const match = matchVehicle(vehicles, { vin: f.vin, plate_or_unit: f.plate_or_unit });
+    setDraft((d) => ({
+      ...d,
+      vehicle_id: match?.id || d.vehicle_id,
+      kind: f.kind ? pick(f.kind, MAINTENANCE_KINDS, 'Other') : d.kind,
+      done_at: sv(f.done_at).slice(0, 10) || d.done_at,
+      odometer: sn(f.odometer) || d.odometer,
+      description: sv(f.description) || d.description,
+      cost: sn(f.cost) || d.cost,
+      vendor: sv(f.vendor) || d.vendor,
+      next_due_on: sv(f.next_due_on).slice(0, 10) || d.next_due_on,
+      next_due_odometer: sn(f.next_due_odometer) || d.next_due_odometer,
+    }));
+    const got = [f.cost != null && 'total', f.vendor && 'shop', f.done_at && 'date', f.description && 'work done'].filter(Boolean);
+    setScanNote(got.length ? `Read ${got.join(', ')} off the paper. Check it${match ? '' : ', pick the truck'}, then save.` : 'Could not read much off that one. Fill it in by hand; the photo is attached.');
+  }
 
   const load = useCallback(async () => {
     const { data } = await supabase.from('fleet_maintenance').select('*').order('done_at', { ascending: false }).limit(300);
@@ -38,7 +63,7 @@ export default function FleetMaintenancePage() {
     });
     setBusy(false);
     if (err) { setError(err.message); return; }
-    setDraft(blank); setReceipt(null); setAdding(false); load();
+    setDraft(blank); setReceipt(null); setAdding(false); setScanNote(''); load();
   }
   async function remove(m: FleetMaintenance) {
     if (!confirm('Delete this entry?')) return;
@@ -66,8 +91,12 @@ export default function FleetMaintenancePage() {
       <FleetNav />
       <div className="flex items-baseline justify-between gap-2 flex-wrap">
         <h1 className="text-2xl font-semibold">Maintenance</h1>
-        <button onClick={() => setAdding((a) => !a)} className={btn}>{adding ? 'Cancel' : '+ Log work'}</button>
+        <div className="flex items-center gap-2">
+          <ScanButton kind="maintenance" folder="maintenance" label="Scan bill" onResult={(f, p) => applyScan(f as MaintenanceScan, p)} />
+          <button onClick={() => setAdding((a) => !a)} className={btn}>{adding ? 'Cancel' : '+ Log work'}</button>
+        </div>
       </div>
+      {scanNote && adding && <p className="text-xs text-gray-600 -mt-2">{scanNote}</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       {due.length > 0 && (

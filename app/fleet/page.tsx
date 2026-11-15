@@ -2,8 +2,10 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import FleetNav from '@/components/FleetNav';
+import ScanButton from '@/components/ScanButton';
 import { useFleet, input, label, btn, btnQuiet, fmtDate } from '@/lib/use-fleet';
 import { VEHICLE_TYPES, dueTone, daysUntil, type FleetVehicle } from '@/lib/fleet';
+import { sv, sn, pick, type RegistrationScan } from '@/lib/fleet-scan';
 
 // Bone's trucks. Each card shows the papers that run out — registration,
 // insurance, annual inspection — in red when past and amber within thirty
@@ -13,30 +15,56 @@ type Draft = Record<string, string>;
 const blank: Draft = { unit_number: '', name: '', vehicle_type: 'Tractor', year: '', make: '', model: '', vin: '', plate: '', plate_state: 'UT', odometer: '', assigned_driver_id: '', registration_expires: '', insurance_expires: '', inspection_due: '', notes: '' };
 
 export default function FleetTrucksPage() {
-  const { supabase, canManage, isAdmin, vehicles, people, loading, refreshVehicles, nameOf } = useFleet();
+  const { supabase, meId, canManage, isAdmin, vehicles, people, loading, refreshVehicles, nameOf } = useFleet();
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState<Draft>(blank);
+  const [regPath, setRegPath] = useState<string | null>(null);
+  const [scanned, setScanned] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const set = (k: string, v: string) => setDraft((d) => ({ ...d, [k]: v }));
+
+  // A scanned registration fills what it can; the person checks the rest.
+  function applyScan(f: RegistrationScan, path: string) {
+    setRegPath(path);
+    setScanned(true);
+    setDraft((d) => ({
+      ...d,
+      plate: sv(f.plate) || d.plate,
+      plate_state: sv(f.plate_state).toUpperCase() || d.plate_state,
+      vin: sv(f.vin).toUpperCase() || d.vin,
+      year: sn(f.year) || d.year,
+      make: sv(f.make) || d.make,
+      model: sv(f.model) || d.model,
+      vehicle_type: f.vehicle_type ? pick(f.vehicle_type, VEHICLE_TYPES, d.vehicle_type as (typeof VEHICLE_TYPES)[number]) : d.vehicle_type,
+      registration_expires: sv(f.registration_expires) || d.registration_expires,
+    }));
+  }
 
   async function save() {
     if (!draft.unit_number.trim()) { setError('Give it a unit number.'); return; }
     setBusy(true); setError('');
     const num = (v: string) => (v.trim() === '' ? null : Number(v));
     const txt = (v: string) => (v.trim() === '' ? null : v.trim());
-    const { error: err } = await supabase.from('fleet_vehicles').insert({
+    const { data: created, error: err } = await supabase.from('fleet_vehicles').insert({
       unit_number: draft.unit_number.trim(), name: txt(draft.name), vehicle_type: txt(draft.vehicle_type),
       year: num(draft.year), make: txt(draft.make), model: txt(draft.model), vin: txt(draft.vin),
       plate: txt(draft.plate), plate_state: txt(draft.plate_state), odometer: num(draft.odometer),
       assigned_driver_id: txt(draft.assigned_driver_id),
       registration_expires: txt(draft.registration_expires), insurance_expires: txt(draft.insurance_expires),
       inspection_due: txt(draft.inspection_due), notes: txt(draft.notes),
-    });
+    }).select('id').single();
+    if (!err && created && regPath) {
+      // The scanned card becomes the truck's registration document.
+      await supabase.from('fleet_documents').insert({
+        vehicle_id: created.id, kind: 'Registration', file_name: `Registration · Unit ${draft.unit_number.trim()}`,
+        file_path: regPath, expires_on: txt(draft.registration_expires), uploaded_by: meId,
+      });
+    }
     setBusy(false);
     if (err) { setError(err.message); return; }
-    setDraft(blank); setAdding(false);
+    setDraft(blank); setRegPath(null); setScanned(false); setAdding(false);
     refreshVehicles();
   }
 
@@ -71,6 +99,10 @@ export default function FleetTrucksPage() {
 
       {adding && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
+          <div className="flex items-center gap-3 flex-wrap mb-3">
+            <ScanButton kind="registration" folder="documents" label="Scan registration" onResult={(f, p) => applyScan(f as RegistrationScan, p)} />
+            <span className="text-xs text-gray-500">{scanned ? 'Filled from the card. Check it, add the unit number, then save; the photo is kept as the registration document.' : 'Snap the registration card and the plate, VIN, year, make, model and expiry fill in.'}</span>
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <label><span className={label}>Unit #</span><input value={draft.unit_number} onChange={(e) => set('unit_number', e.target.value)} className={input} /></label>
             <label><span className={label}>Name</span><input value={draft.name} onChange={(e) => set('name', e.target.value)} placeholder="Red Kenworth" className={input} /></label>
