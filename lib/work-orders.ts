@@ -174,9 +174,24 @@ export type WorkOrderLoad = {
   unload_out_accuracy: number | null;
   tons: number | null;
   material: string | null;
+  // Photo of the scale ticket / BOL for this load (work-tickets bucket).
+  bol_photo_path: string | null;
   created_at: string;
   updated_at: string;
 };
+
+// The truck's day off the stamps: the first Load in and the last Unload out.
+// These are the ticket's start and stop on a driver's ticket — the driver
+// never types a time, they tap at the pit and at the site.
+export function stampSpan(loads: Pick<WorkOrderLoad, 'load_in_at' | 'unload_out_at'>[]): { firstIn: string | null; lastOut: string | null } {
+  let firstIn: string | null = null;
+  let lastOut: string | null = null;
+  for (const l of loads) {
+    if (l.load_in_at && (!firstIn || l.load_in_at < firstIn)) firstIn = l.load_in_at;
+    if (l.unload_out_at && (!lastOut || l.unload_out_at > lastOut)) lastOut = l.unload_out_at;
+  }
+  return { firstIn, lastOut };
+}
 
 // The four stamps in the order they happen on a run.
 export const LOAD_STAMPS = [

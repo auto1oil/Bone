@@ -3,7 +3,18 @@
 // line up on both sides. Everything is optional: a crumpled receipt gives
 // what it gives, and the person checks the form before saving.
 
-export type ScanKind = 'registration' | 'fuel' | 'maintenance';
+export type ScanKind = 'registration' | 'fuel' | 'maintenance' | 'bol';
+
+// A scale ticket / bill of lading for one load on a haul ticket.
+export type BolScan = {
+  ticket_number?: string | null;
+  net_tons?: number | null;
+  material?: string | null;
+  pit?: string | null;
+  weighed_at?: string | null;    // YYYY-MM-DDTHH:MM
+  truck_or_plate?: string | null;
+  customer_or_job?: string | null;
+};
 
 export type RegistrationScan = {
   plate?: string | null;
@@ -45,7 +56,8 @@ export type MaintenanceScan = {
 export type ScanResult =
   | { kind: 'registration'; fields: RegistrationScan }
   | { kind: 'fuel'; fields: FuelScan }
-  | { kind: 'maintenance'; fields: MaintenanceScan };
+  | { kind: 'maintenance'; fields: MaintenanceScan }
+  | { kind: 'bol'; fields: BolScan };
 
 // JSON schemas handed to the model as its output format. Keep nullable on
 // every field so a missing value comes back null, never invented.
@@ -98,6 +110,19 @@ export const SCAN_SCHEMAS: Record<ScanKind, Record<string, unknown>> = {
     },
     required: ['done_at', 'kind', 'description', 'cost', 'vendor', 'odometer', 'next_due_on', 'next_due_odometer', 'vin', 'plate_or_unit'],
   },
+  bol: {
+    type: 'object', additionalProperties: false,
+    properties: {
+      ticket_number: { ...str, description: 'The scale ticket / BOL / load ticket number printed on it' },
+      net_tons: { ...num, description: 'NET weight in US short tons (2000 lb). If the ticket shows net in pounds, divide by 2000. Net = gross minus tare. Never gross.' },
+      material: { ...str, description: 'Product or material hauled, as printed, e.g. 2" E-Fill, Road base, Pit run' },
+      pit: { ...str, description: 'Pit, quarry or plant name the ticket came from' },
+      weighed_at: { ...str, description: 'Date and time on the ticket as YYYY-MM-DDTHH:MM' },
+      truck_or_plate: { ...str, description: 'Truck number, unit, or plate printed on the ticket' },
+      customer_or_job: { ...str, description: 'Customer, job or project named on the ticket' },
+    },
+    required: ['ticket_number', 'net_tons', 'material', 'pit', 'weighed_at', 'truck_or_plate', 'customer_or_job'],
+  },
 };
 
 // Form-side helpers: turn a scanned value into what an input holds.
@@ -132,4 +157,9 @@ export const SCAN_PROMPTS: Record<ScanKind, string> = {
     'This is a photo of a repair shop invoice, a parts bill, a service record, or a handwritten maintenance note for a truck. ' +
     'Read it and fill in the fields. Use null for anything not legible or not on the document; never guess a number. ' +
     'Summarize what was done in one plain line. The cost is the grand total paid.',
+  bol:
+    'This is a photo of a scale ticket, weigh ticket or bill of lading from a gravel pit, quarry or asphalt plant for one truckload. ' +
+    'Read it and fill in the fields. Use null for anything not legible or not on the ticket; never guess a number. ' +
+    'The weight wanted is the NET (gross minus tare) in US short tons; convert pounds by dividing by 2000 and give decimals. ' +
+    'The ticket number is the printed ticket or BOL number, not a truck number or a date.',
 };

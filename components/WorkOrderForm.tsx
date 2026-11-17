@@ -8,14 +8,19 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase-browser';
 import TicketAttachment from '@/components/TicketAttachment';
 import TicketSignature from '@/components/TicketSignature';
-import LoadLines from '@/components/LoadLines';
+import LoadLines, { type LoadTotals } from '@/components/LoadLines';
 import CustomerPicker from '@/components/CustomerPicker';
 import HaulerOnTicket from '@/components/HaulerOnTicket';
+import { BRAND } from '@/lib/brand';
 import { orderLabel, ticketDefaultsFrom, type JobOrder } from '@/lib/job-orders';
 import {
   onSiteHours, totalHours, ticketAmount, billableUnit, billableQuantity,
   type WorkOrder,
 } from '@/lib/work-orders';
+
+// Which layout office and admin see; crews always get the driver view.
+const VIEW_PREF_KEY = 'bone-ticket-view';
+const CREW_ROLES = ['driver', 'mechanic', 'labor', 'hauler'];
 
 // The field ticket itself — one form used three ways: a crew member filling one
 // out, the same crew member fixing a draft, and the office editing a submitted
@@ -221,8 +226,18 @@ export default function WorkOrderForm({
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   // Rolled up from the load lines so the live total matches what the server
-  // will bill — it recomputes from the same rows before invoicing.
-  const [loadTotals, setLoadTotals] = useState<{ loads: number; tons: number }>({ loads: 0, tons: 0 });
+  // will bill — it recomputes from the same rows before invoicing. The first
+  // Load in and last Unload out ride along: on a driver's ticket they ARE
+  // the start and stop.
+  const [loadTotals, setLoadTotals] = useState<LoadTotals>({ loads: 0, tons: 0, firstIn: null, lastOut: null });
+  // Who is holding the phone. A crew member gets the driver view: the job
+  // and truck already filled, times off the stamps, BOLs by photo, down and
+  // extra time, the foreman's signature — and nothing else to type. Office
+  // and admin get the full form, with a switch to see what the driver sees.
+  const [me, setMe] = useState<{ id: string; role: string; full_name: string | null; hauler_id: string | null } | null>(null);
+  const [viewPref, setViewPref] = useState<'driver' | 'full'>('full');
+  const isCrew = !!me && (CREW_ROLES.includes(me.role) || !!me.hauler_id);
+  const driverView = !!me && (isCrew ? true : viewPref === 'driver');
   // The factoring app's bill of sale for a Factor Payment ticket. The hauler
   // signs it over there; completing the ticket requires the signature.
   const [bos, setBos] = useState<{ url: string; accepted: boolean; accepted_by: string | null; accepted_at: string | null } | null>(null);
@@ -251,10 +266,12 @@ export default function WorkOrderForm({
   // Picking an order pulls its agreed terms onto the ticket. Only blank
   // fields are filled — a crew that already typed a rate keeps it, and the
   // difference is what gets flagged for the office rather than overwritten.
-  function applyOrder(orderId: string) {
-    const picked = orders.find((o) => o.id === orderId);
+  function applyOrder(orderId: string, orderList: JobOrder[] = orders, haulerSide: boolean = isHauler) {
+    const picked = orderList.find((o) => o.id === orderId);
     if (!picked) { set('order_id', orderId); return; }
-    const defaults = ticketDefaultsFrom(picked, isHauler);
+    const defaults = ticketDefaultsFrom(picked, haulerSide);
+    // The order's tonnage type is the nearest thing it has to a material.
+    if (picked.tonnage_type) defaults.material = picked.tonnage_type;
     setDraft((d) => {
       const next = { ...d, order_id: orderId };
       for (const [k, val] of Object.entries(defaults)) {
@@ -277,15 +294,21 @@ export default function WorkOrderForm({
       setCustomers(((bizRows as { id: string; name: string }[]) || [])
         .map((b) => ({ id: b.id, name: b.name, business_id: b.id, profile_id: null })));
       setRates((rateRows as Rate[]) || []);
-      setOrders((orderRows as JobOrder[]) || []);
+      const openOrders = (orderRows as JobOrder[]) || [];
+      setOrders(openOrders);
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         // Anyone on a hauling company's side — the company login OR one of
         // its drivers — gets the hauler treatment: no order book, job fields
         // locked, pay-side rate only.
-        const { data: me } = await supabase.from('profiles').select('role, hauler_id').eq('id', user.id).single();
-        const haulerSide = me?.role === 'hauler' || !!me?.hauler_id;
+        const { data: prof } = await supabase.from('profiles').select('id, role, full_name, hauler_id').eq('id', user.id).single();
+        const haulerSide = prof?.role === 'hauler' || !!prof?.hauler_id;
         setIsHauler(haulerSide);
+        if (prof) setMe({ id: prof.id, role: prof.role, full_name: prof.full_name, hauler_id: prof.hauler_id });
+        try {
+          const pref = localStorage.getItem(VIEW_PREF_KEY);
+          if (pref === 'driver' || pref === 'full') setViewPref(pref);
+        } catch { /* default stands */ }
         if (haulerSide) {
           try {
             const res = await fetch('/api/haulers/factoring-link', { cache: 'no-store' });
@@ -293,9 +316,60 @@ export default function WorkOrderForm({
             setFactorAllowed(json.ok && json.status === 'linked');
           } catch { /* stays hidden — no answer is not a yes */ }
         }
+
+        // A brand-new ticket starts with everything the app already knows:
+        // the driver's name, the truck they usually drive (their fleet
+        // assignment, else their last ticket), and the job — the order their
+        // last ticket was on if it's still open, or the only open order.
+        if (!workOrder && prof) {
+          const [{ data: lastRows }, { data: truckRows }] = await Promise.all([
+            supabase.from('work_orders')
+              .select('order_id, unit_number, plate_number, truck_type, truck_type_tons, trucking_company, equipment_type')
+              .eq('submitted_by', prof.id).order('created_at', { ascending: false }).limit(1),
+            prof.hauler_id
+              ? Promise.resolve({ data: null })
+              : supabase.from('fleet_vehicles').select('unit_number, plate').eq('assigned_driver_id', prof.id).eq('active', true).limit(1),
+          ]);
+          const last = (lastRows as Partial<WorkOrder>[] | null)?.[0];
+          const truck = (truckRows as { unit_number: string; plate: string | null }[] | null)?.[0];
+          setDraft((d) => {
+            const next = { ...d };
+            const fill = (k: string, v: unknown) => { if (!next[k] && v != null && v !== '') next[k] = String(v); };
+            fill('driver_name', prof.full_name);
+            fill('unit_number', truck?.unit_number);
+            fill('plate_number', truck?.plate);
+            if (last) {
+              for (const k of ['unit_number', 'plate_number', 'truck_type', 'truck_type_tons', 'trucking_company', 'equipment_type'] as const) fill(k, last[k]);
+            }
+            return next;
+          });
+          const lastOrder = last?.order_id ? openOrders.find((o) => o.id === last.order_id) : undefined;
+          const pickOrder = lastOrder ? lastOrder.id : openOrders.length === 1 ? openOrders[0].id : '';
+          if (pickOrder && !haulerSide) applyOrder(pickOrder, openOrders, haulerSide);
+        }
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
+
+  // On a driver's ticket the clock is the stamps: start is the first Load
+  // in, stop is the last Unload out. Nothing to type, nothing to misremember
+  // at the end of the day; clearing a stamp moves the time with it. (The
+  // server does the same on submit, so a posted time can't disagree.)
+  useEffect(() => {
+    if (!driverView || locked || !id) return;
+    const start = toLocalInput(loadTotals.firstIn);
+    const stop = toLocalInput(loadTotals.lastOut);
+    setDraft((d) => (d.start_at === start && d.stop_at === stop && d.driver_start_at === start && d.driver_end_at === stop
+      ? d
+      : { ...d, start_at: start, stop_at: stop, driver_start_at: start, driver_end_at: stop }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driverView, locked, id, loadTotals.firstIn, loadTotals.lastOut]);
+
+  function setView(v: 'driver' | 'full') {
+    setViewPref(v);
+    try { localStorage.setItem(VIEW_PREF_KEY, v); } catch { /* fine */ }
+  }
 
   // The agreed rate for the job/phase typed above, so the crew doesn't have to
   // remember it. Exact phase match wins; a job-wide rate is the fallback.
@@ -470,9 +544,16 @@ export default function WorkOrderForm({
 
   async function save(submit: boolean) {
     if (submit) {
-      if (!draft.job_number.trim()) { setError('Enter the job number before completing the ticket.'); return; }
-      if (!draft.start_at || !draft.stop_at) { setError('Enter the start and stop times before completing the ticket.'); return; }
-      if (!ticketPhoto) { setError('Attach a photo of the paper ticket before completing it.'); return; }
+      if (!draft.job_number.trim()) { setError(driverView ? 'Pick the job at the top before finishing.' : 'Enter the job number before completing the ticket.'); return; }
+      if (!draft.start_at || !draft.stop_at) {
+        setError(driverView
+          ? 'The day needs at least one load with a Load in and an Unload out stamped — those set the start and end.'
+          : 'Enter the start and stop times before completing the ticket.');
+        return;
+      }
+      // A driver's ticket is the stamps and the BOL photos; there is no paper
+      // ticket to photograph.
+      if (!driverView && !ticketPhoto) { setError('Attach a photo of the paper ticket before completing it.'); return; }
       if (!foremanSignature) { setError('The job foreman needs to sign the ticket before it goes in.'); return; }
       if (!foremanSigner.name) { setError('The foreman’s typed name is missing — clear their signature and have them sign again with their name.'); return; }
     }
@@ -493,7 +574,7 @@ export default function WorkOrderForm({
         setError(json.error || 'Could not save the ticket.');
         return;
       }
-      setMsg(submit ? 'Completed — it\u2019s with the office now.' : 'Saved.');
+      setMsg(submit ? 'Completed — it\u2019s with the office now.' : driverView && !id ? 'Day started — stamp Load in at the pit.' : 'Saved.');
       pingTicketProgress(json.work_order?.id);
       onSaved?.(json.work_order as WorkOrder);
       if (!id) router.replace(`/tickets/${json.work_order.id}`);
@@ -551,9 +632,333 @@ export default function WorkOrderForm({
     && (!bos.accepted_at || new Date(bos.accepted_at) <= new Date(workOrder.bos_reset_at))
   );
 
+  // Office and admin can look at a ticket the way its driver does.
+  const viewToggle = me && !isCrew ? (
+    <div className="flex justify-end">
+      <button type="button" onClick={() => setView(driverView ? 'full' : 'driver')} className="text-xs text-brand-700 hover:underline">
+        {driverView ? 'Show the full form' : 'Show the driver view'}
+      </button>
+    </div>
+  ) : null;
+
+  const paymentBlock = (
+    <>
+      {/* How the hauler wants paying. Factor hands the approved ticket to the
+          factoring service to fund; standard waits on Bone's pay run. */}
+      {isHauler && (
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-1">
+            How do you want this ticket paid?
+          </h2>
+          <p className="text-xs text-gray-500 mb-3">
+            Factor Payment sends the approved ticket straight to the factoring
+            service to fund. Standard Pay stays on the normal pay run.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {/* Factor Payment only exists once the company's Auto 1 Funding
+                account is linked — no account, no button. */}
+            {(factorAllowed
+              ? ([['standard', 'Standard Pay'], ['factor', 'Factor Payment']] as const)
+              : ([['standard', 'Standard Pay']] as const)
+            ).map(([value, title]) => (
+              <button
+                key={value}
+                type="button"
+                disabled={locked}
+                onClick={() => set('payment_method', value)}
+                className={`px-3 py-2.5 rounded-md border text-sm font-medium disabled:opacity-50 ${
+                  (draft.payment_method || 'standard') === value
+                    ? 'border-brand-700 bg-brand-700 text-white'
+                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {title}
+              </button>
+            ))}
+          </div>
+          {!factorAllowed && (
+            <p className="mt-2 text-[11px] text-gray-500">
+              Factor Payment shows up here once your Auto 1 Funding account is
+              linked and approved — request it under{' '}
+              <Link href="/hauler/company" className="text-brand-700 hover:underline">Company</Link>.
+            </p>
+          )}
+
+          {/* Factor Payment comes with a bill of sale to sign at the
+              factoring app. Completing the ticket requires the signature. */}
+          {draft.payment_method === 'factor' && (
+            !id ? (
+              <p className="mt-3 text-xs text-gray-500">
+                Save the draft once and the bill of sale to sign appears here.
+              </p>
+            ) : bos?.accepted && !bosStale ? (
+              <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                Bill of sale signed
+                {bos.accepted_by ? ` by ${bos.accepted_by}` : ''}
+                {bos.accepted_at ? ` · ${new Date(bos.accepted_at).toLocaleString()}` : ''}.
+              </p>
+            ) : (
+              <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-sm text-amber-900">
+                  {bosStale
+                    ? 'The office sent this ticket back, so the amounts changed. The refreshed bill of sale needs to be signed again before completing.'
+                    : 'The factoring company’s bill of sale needs your signature before this ticket can be completed. It reflects the last saved numbers — save the draft again if you just changed times or loads.'}
+                </p>
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => loadBos(true)}
+                    disabled={bosBusy}
+                    className="px-3 py-1.5 text-xs rounded-md bg-brand-700 text-white font-medium hover:bg-brand-900 disabled:opacity-50"
+                  >
+                    {bosBusy ? 'Working…' : 'Open & sign the bill of sale'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => loadBos(false)}
+                    disabled={bosBusy}
+                    className="px-3 py-1.5 text-xs rounded-md border border-gray-300 hover:bg-white disabled:opacity-50"
+                  >
+                    I signed it — check again
+                  </button>
+                </div>
+                {bosError && <p className="text-xs text-red-600 mt-1.5">{bosError}</p>}
+              </div>
+            )
+          )}
+        </div>
+      )}
+
+    </>
+  );
+
+  const actionButtons = (
+      <div className="flex flex-wrap gap-2 pb-8">
+        {!locked && (
+          <>
+            <button
+              onClick={() => save(false)}
+              disabled={!!busy}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+            >
+              {busy === 'save' ? 'Saving…' : driverView ? 'Save' : 'Save draft'}
+            </button>
+            {(status === 'draft' || status === 'rejected') && (
+              <button
+                onClick={() => save(true)}
+                disabled={!!busy}
+                className="px-4 py-2 text-sm bg-brand-700 text-white rounded-md hover:bg-brand-900 disabled:opacity-50 font-medium"
+              >
+                {busy === 'submit' ? 'Completing…' : status === 'rejected' ? 'Fix and send back' : driverView ? 'Finish day — send to the office' : 'Complete ticket'}
+              </button>
+            )}
+          </>
+        )}
+        {canApprove && status === 'submitted' && (
+          <>
+            <button
+              onClick={() => approve(false)}
+              disabled={!!busy}
+              className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50 font-medium"
+            >
+              {busy === 'approve' ? 'Approving…' : 'Approve & invoice'}
+            </button>
+            <button
+              onClick={() => approve(true)}
+              disabled={!!busy}
+              className="px-4 py-2 text-sm border border-red-300 text-red-700 rounded-md hover:bg-red-50 disabled:opacity-50"
+            >
+              {busy === 'reject' ? 'Sending back…' : 'Send back'}
+            </button>
+          </>
+        )}
+      </div>
+  );
+
+  // ---- The driver view ---------------------------------------------------
+  // The paper pad as the driver sees it: the head of the ticket already
+  // filled from the job, the driver and the truck already known, start and
+  // end set by the first Load in and the last Unload out. What's left to
+  // touch is the loads (one tap per stamp, a photo per BOL), down and extra
+  // time, and the foreman's signature.
+  const clock = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '');
+  const weekday = draft.job_date ? new Date(`${draft.job_date}T12:00:00`).toLocaleDateString([], { weekday: 'short' }).toUpperCase() : '';
+  const customerName = customers.find((c) => c.id === draft.customer_id)?.name || '';
+  const headRow = (k: string, v: React.ReactNode) => (v ? (
+    <div className="grid grid-cols-[6.5rem_1fr] gap-2 py-0.5"><span className="text-gray-500">{k}</span><span className="text-gray-900">{v}</span></div>
+  ) : null);
+  const ro = `${input} bg-gray-50`;
+
+  if (driverView) return (
+    <div className="space-y-4">
+      {workOrder?.hauler_id && <HaulerOnTicket haulerId={workOrder.hauler_id} />}
+      {viewToggle}
+
+      <div className="bg-white border-2 border-brand-700 rounded-xl p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-2xl font-black tracking-tight">{BRAND.name}</div>
+            <div className="text-[11px] text-gray-500">{BRAND.legalName} · {BRAND.addressLines.join(', ')} · {BRAND.phone}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] uppercase tracking-wide text-gray-500">Haul ticket</div>
+            <div className="text-xl font-bold text-accent-400 tabular-nums">{draft.ticket_number || (id ? id.slice(0, 6).toUpperCase() : 'New')}</div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-2 mt-3">
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-brand-700 text-brand-700">{weekday}</span>
+          <input type="date" value={draft.job_date} onChange={(e) => set('job_date', e.target.value)} disabled={locked} className={`${input} w-auto font-semibold`} />
+        </div>
+
+        <div className="mt-3 text-sm">
+          {isHauler ? (
+            <p className="text-xs text-gray-600 mb-2">
+              {draft.order_id
+                ? 'This ticket is against the job Bone sent you. The job came with it; your loads, times and signature are what you fill in.'
+                : 'Start from the load Bone sent you and the job fills itself in, or fill the job in below.'}
+            </p>
+          ) : (
+            <label className="block mb-2">
+              <span className={label}>Job (order)</span>
+              <select value={draft.order_id} onChange={(e) => applyOrder(e.target.value)} disabled={locked} className={`${input} font-medium`}>
+                <option value="">— Pick the job —</option>
+                {orders.map((o) => <option key={o.id} value={o.id}>{orderLabel(o)}</option>)}
+              </select>
+            </label>
+          )}
+          {headRow('Customer', customerName || draft.customer_number)}
+          {headRow('Job', draft.job_name)}
+          {headRow('Job #', [draft.job_number, draft.phase_code ? `Phase ${draft.phase_code}` : null].filter(Boolean).join(' · '))}
+          {headRow('Pit', draft.supplier ? <><span>{draft.supplier}</span> <MapLink address={draft.supplier} /></> : null)}
+          {headRow('Job address', draft.job_address ? <><span>{draft.job_address}</span> <MapLink address={draft.job_address} /></> : null)}
+          <div className="grid grid-cols-[6.5rem_1fr] gap-2 py-0.5 items-center">
+            <span className="text-gray-500">Material</span>
+            <input value={draft.material} onChange={(e) => set('material', e.target.value)} disabled={locked} placeholder="What's being hauled" className={input} />
+          </div>
+          {!draft.order_id && !locked && (
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <label><span className={label}>Job #</span><input value={draft.job_number} onChange={(e) => set('job_number', e.target.value)} className={input} /></label>
+              <label><span className={label}>Job name</span><input value={draft.job_name} onChange={(e) => set('job_name', e.target.value)} className={input} /></label>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-3 pt-3 border-t border-gray-200 text-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-gray-500">Driver</span>
+            {draft.driver_name && !locked ? (
+              <span className="font-semibold">{draft.driver_name}</span>
+            ) : (
+              <input value={draft.driver_name} onChange={(e) => set('driver_name', e.target.value)} disabled={locked} placeholder="Your name" className={`${input} max-w-xs`} />
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <label><span className={label}>Truck #</span>
+              <input value={draft.unit_number} onChange={(e) => set('unit_number', e.target.value)} disabled={locked} className={input} />
+            </label>
+            <label><span className={label}>Plate #</span>
+              <input value={draft.plate_number} onChange={(e) => set('plate_number', e.target.value)} disabled={locked} className={input} />
+            </label>
+            <label><span className={label}>Type of truck</span>
+              <select value={draft.truck_type} onChange={(e) => set('truck_type', e.target.value)} disabled={locked} className={input}>
+                <option value="">—</option>
+                {TRUCK_TYPES.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+                <option value="Other">Other</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mt-3">
+          <div className={`rounded-lg border px-3 py-2 ${preview.start_at ? 'border-emerald-200 bg-emerald-50' : 'border-dashed border-gray-300'}`}>
+            <div className="text-[10px] uppercase tracking-wide text-gray-500">Start</div>
+            <div className="text-lg font-bold tabular-nums">{preview.start_at ? clock(preview.start_at) : <span className="text-sm font-normal text-gray-500">first Load in</span>}</div>
+            <div className="text-[10px] text-gray-500">set by the first Load in</div>
+          </div>
+          <div className={`rounded-lg border px-3 py-2 ${preview.stop_at ? 'border-emerald-200 bg-emerald-50' : 'border-dashed border-gray-300'}`}>
+            <div className="text-[10px] uppercase tracking-wide text-gray-500">End</div>
+            <div className="text-lg font-bold tabular-nums">{preview.stop_at ? clock(preview.stop_at) : <span className="text-sm font-normal text-gray-500">last Unload out</span>}</div>
+            <div className="text-[10px] text-gray-500">set by the last Unload out</div>
+          </div>
+        </div>
+      </div>
+
+      {id ? (
+        <LoadLines workOrderId={id} locked={locked} onTotalsChange={setLoadTotals} defaultMaterial={draft.material} />
+      ) : (
+        <div className="bg-white border-2 border-dashed border-brand-700 rounded-xl p-4 text-center">
+          <p className="text-sm text-gray-700 mb-3">
+            {draft.job_number ? 'Job’s picked, truck’s on. Start the day and the load lines open up: one tap at the pit, one at the site.' : 'Pick the job at the top, then start the day.'}
+          </p>
+          <button onClick={() => save(false)} disabled={!!busy || !draft.job_number}
+            className="px-6 py-3 text-base bg-brand-700 text-white rounded-lg hover:bg-brand-900 disabled:opacity-50 font-semibold">
+            {busy === 'save' ? 'Starting…' : 'Start the day'}
+          </button>
+        </div>
+      )}
+
+      {id && (
+        <div className="bg-white border border-gray-200 rounded-lg p-4 text-sm space-y-2">
+          <div className="flex justify-between"><span className="text-gray-500">Total loads</span><span className="font-semibold tabular-nums">{loadTotals.loads} · {loadTotals.tons.toFixed(1)} tons</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Truck hours</span><span className="font-semibold tabular-nums">{onSiteHours(preview.start_at, preview.stop_at).toFixed(1)}{preview.start_at ? ` (${clock(preview.start_at)} – ${preview.stop_at ? clock(preview.stop_at) : '…'})` : ''}</span></div>
+          <div className="grid grid-cols-[1fr_5.5rem] gap-2 items-center">
+            <div><div className="text-gray-700">Down time (h)</div><div className="text-[11px] text-gray-500">breakdown, stuck, time the truck wasn&apos;t working</div></div>
+            <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.down_hours} onChange={(e) => set('down_hours', e.target.value)} disabled={locked} placeholder="0" className={`${input} text-right`} />
+          </div>
+          <div className="grid grid-cols-[1fr_5.5rem] gap-2 items-center">
+            <div><div className="text-gray-700">Extra time (h)</div><div className="text-[11px] text-gray-500">waited at the pit or the job, travel, detours</div></div>
+            <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.travel_hours} onChange={(e) => set('travel_hours', e.target.value)} disabled={locked} placeholder="0" className={`${input} text-right`} />
+          </div>
+          <div className="flex justify-between pt-2 border-t border-gray-100"><span className="text-gray-500">Total hours</span><span className="font-semibold tabular-nums">{hours.toFixed(1)}</span></div>
+          {loadTotals.lastOut && <div className="flex justify-between"><span className="text-gray-500">Last load unloaded</span><span className="tabular-nums">{clock(loadTotals.lastOut)}</span></div>}
+          {isHauler && (preview.rate > 0) && (
+            <div className="flex justify-between pt-2 border-t border-gray-100"><span className="text-gray-500">Pays</span><span className="font-semibold tabular-nums">{billableQuantity(preview, previewLoads).toFixed(2)} {unit} = ${amount.toFixed(2)}</span></div>
+          )}
+        </div>
+      )}
+
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <label><span className={label}>Notes</span>
+          <textarea rows={2} value={draft.notes} onChange={(e) => set('notes', e.target.value)} disabled={locked} placeholder="Waits at the pit, scale down, detours…" className={input} />
+        </label>
+      </div>
+
+      {paymentBlock}
+
+      {id && (
+        <TicketSignature
+          path={foremanSignature}
+          signerName={foremanSigner.name}
+          signedAt={foremanSigner.at}
+          onChange={setForemanSignature}
+          onSigned={(name, at) => setForemanSigner({ name, at })}
+          readOnly={locked}
+          label="Job foreman signs"
+          hint="Hand them the phone: they type their name and sign. The day can't be finished without it."
+        />
+      )}
+
+      {id && foremanSignature && foremanSigner.name && (
+        <div className="bg-white border border-gray-200 rounded-lg p-4 flex items-center justify-between gap-3 flex-wrap">
+          <span className="text-sm text-gray-700">Signed by <strong>{foremanSigner.name}</strong>.</span>
+          <button type="button" onClick={shareTicket} disabled={busy === 'share'} className="px-4 py-2 text-sm rounded-md border border-brand-700 text-brand-700 font-medium hover:bg-brand-50 disabled:opacity-50">
+            {busy === 'share' ? 'Building the PDF…' : 'Ticket PDF — view / share'}
+          </button>
+        </div>
+      )}
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      {msg && <p className="text-sm text-emerald-700">{msg}</p>}
+
+      {id && actionButtons}
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       {workOrder?.hauler_id && <HaulerOnTicket haulerId={workOrder.hauler_id} />}
+      {viewToggle}
 
       <div className="bg-white border border-gray-200 rounded-lg p-4">
         <div className="flex items-baseline justify-between gap-2 mb-3">
@@ -882,135 +1287,12 @@ export default function WorkOrderForm({
         </label>
       </div>
 
-      {/* How the hauler wants paying. Factor hands the approved ticket to the
-          factoring service to fund; standard waits on Bone's pay run. */}
-      {isHauler && (
-        <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-1">
-            How do you want this ticket paid?
-          </h2>
-          <p className="text-xs text-gray-500 mb-3">
-            Factor Payment sends the approved ticket straight to the factoring
-            service to fund. Standard Pay stays on the normal pay run.
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {/* Factor Payment only exists once the company's Auto 1 Funding
-                account is linked — no account, no button. */}
-            {(factorAllowed
-              ? ([['standard', 'Standard Pay'], ['factor', 'Factor Payment']] as const)
-              : ([['standard', 'Standard Pay']] as const)
-            ).map(([value, title]) => (
-              <button
-                key={value}
-                type="button"
-                disabled={locked}
-                onClick={() => set('payment_method', value)}
-                className={`px-3 py-2.5 rounded-md border text-sm font-medium disabled:opacity-50 ${
-                  (draft.payment_method || 'standard') === value
-                    ? 'border-brand-700 bg-brand-700 text-white'
-                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                {title}
-              </button>
-            ))}
-          </div>
-          {!factorAllowed && (
-            <p className="mt-2 text-[11px] text-gray-500">
-              Factor Payment shows up here once your Auto 1 Funding account is
-              linked and approved — request it under{' '}
-              <Link href="/hauler/company" className="text-brand-700 hover:underline">Company</Link>.
-            </p>
-          )}
-
-          {/* Factor Payment comes with a bill of sale to sign at the
-              factoring app. Completing the ticket requires the signature. */}
-          {draft.payment_method === 'factor' && (
-            !id ? (
-              <p className="mt-3 text-xs text-gray-500">
-                Save the draft once and the bill of sale to sign appears here.
-              </p>
-            ) : bos?.accepted && !bosStale ? (
-              <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                Bill of sale signed
-                {bos.accepted_by ? ` by ${bos.accepted_by}` : ''}
-                {bos.accepted_at ? ` · ${new Date(bos.accepted_at).toLocaleString()}` : ''}.
-              </p>
-            ) : (
-              <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-                <p className="text-sm text-amber-900">
-                  {bosStale
-                    ? 'The office sent this ticket back, so the amounts changed. The refreshed bill of sale needs to be signed again before completing.'
-                    : 'The factoring company’s bill of sale needs your signature before this ticket can be completed. It reflects the last saved numbers — save the draft again if you just changed times or loads.'}
-                </p>
-                <div className="flex gap-2 mt-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => loadBos(true)}
-                    disabled={bosBusy}
-                    className="px-3 py-1.5 text-xs rounded-md bg-brand-700 text-white font-medium hover:bg-brand-900 disabled:opacity-50"
-                  >
-                    {bosBusy ? 'Working…' : 'Open & sign the bill of sale'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => loadBos(false)}
-                    disabled={bosBusy}
-                    className="px-3 py-1.5 text-xs rounded-md border border-gray-300 hover:bg-white disabled:opacity-50"
-                  >
-                    I signed it — check again
-                  </button>
-                </div>
-                {bosError && <p className="text-xs text-red-600 mt-1.5">{bosError}</p>}
-              </div>
-            )
-          )}
-        </div>
-      )}
+      {paymentBlock}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
       {msg && <p className="text-sm text-emerald-700">{msg}</p>}
 
-      <div className="flex flex-wrap gap-2 pb-8">
-        {!locked && (
-          <>
-            <button
-              onClick={() => save(false)}
-              disabled={!!busy}
-              className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
-            >
-              {busy === 'save' ? 'Saving…' : 'Save draft'}
-            </button>
-            {(status === 'draft' || status === 'rejected') && (
-              <button
-                onClick={() => save(true)}
-                disabled={!!busy}
-                className="px-4 py-2 text-sm bg-brand-700 text-white rounded-md hover:bg-brand-900 disabled:opacity-50 font-medium"
-              >
-                {busy === 'submit' ? 'Completing…' : status === 'rejected' ? 'Fix and send back' : 'Complete ticket'}
-              </button>
-            )}
-          </>
-        )}
-        {canApprove && status === 'submitted' && (
-          <>
-            <button
-              onClick={() => approve(false)}
-              disabled={!!busy}
-              className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50 font-medium"
-            >
-              {busy === 'approve' ? 'Approving…' : 'Approve & invoice'}
-            </button>
-            <button
-              onClick={() => approve(true)}
-              disabled={!!busy}
-              className="px-4 py-2 text-sm border border-red-300 text-red-700 rounded-md hover:bg-red-50 disabled:opacity-50"
-            >
-              {busy === 'reject' ? 'Sending back…' : 'Send back'}
-            </button>
-          </>
-        )}
-      </div>
+      {actionButtons}
     </div>
   );
 }

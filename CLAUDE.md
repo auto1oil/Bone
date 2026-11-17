@@ -43,6 +43,16 @@ Check in this order and report which one it was:
 - `lib/truck-types.ts` — the TYPE OF TRUCK list from the Bone paper pad and
   the 28-load-line limit (two columns of fourteen).
 - `lib/ticket-pdf.ts` — the haul ticket PDF, laid out to mirror the Bone pad.
+- The ticket form (`components/WorkOrderForm.tsx`) has two layouts. Crews
+  (driver, mechanic, labor, hauler side) always get the **driver view**: the
+  head prefilled (name, truck from `fleet_vehicles` assignment or last
+  ticket, the job from the last ticket's order or the only open one), start
+  and stop taken from the stamps (first Load in, last Unload out, via
+  `stampSpan`), BOL per load by photo (`ScanButton` kind `bol` →
+  `work_order_loads.bol_photo_path`, ticket number and net tons), down time
+  and extra time typed, the foreman's signature, Finish day. Office and admin
+  get the full form with a toggle. On a crew submit the PATCH route re-derives
+  start/stop from the loads, so posted times can't disagree with the stamps.
 - Live progress to the funding app: `sendTicketProgress` in `lib/factoring.ts`
   posts an in-progress preview of a ticket to `{base}/progress` — only for a
   hauler whose link is `linked`, only while the ticket is open, only when

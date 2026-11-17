@@ -2,11 +2,13 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase-browser';
 import {
-  LOAD_STAMPS, totalLoadTons, countLoads,
+  LOAD_STAMPS, totalLoadTons, countLoads, stampSpan,
   type WorkOrderLoad, type LoadStampKey,
 } from '@/lib/work-orders';
 import { MAX_LOADS } from '@/lib/truck-types';
 import { pingTicketProgress } from '@/lib/progress-ping';
+import ScanButton from '@/components/ScanButton';
+import { sv, sn, type BolScan } from '@/lib/fleet-scan';
 
 // The 28 load lines off the paper haul ticket (two columns of fourteen on the
 // pad): per load, a ticket number, the four in/out stamps, what it weighed, and
@@ -21,10 +23,15 @@ import { pingTicketProgress } from '@/lib/progress-ping';
 // The paper form is a 7-column grid, which is unusable on a phone, so each
 // load is a card instead. Same information, one thumb.
 
+export type LoadTotals = { loads: number; tons: number; firstIn: string | null; lastOut: string | null };
+
 type Props = {
   workOrderId: string;
   locked?: boolean;
-  onTotalsChange?: (totals: { loads: number; tons: number }) => void;
+  onTotalsChange?: (totals: LoadTotals) => void;
+  // The ticket's material, shown as the placeholder on each load so the
+  // driver only types it when a load carried something else.
+  defaultMaterial?: string;
 };
 
 const GPS_TIMEOUT_MS = 8000;
@@ -79,7 +86,7 @@ function looksOffline(message: string): boolean {
   return /fetch|network|load failed|timed? ?out|connection|socket/i.test(message);
 }
 
-export default function LoadLines({ workOrderId, locked = false, onTotalsChange }: Props) {
+export default function LoadLines({ workOrderId, locked = false, onTotalsChange, defaultMaterial = '' }: Props) {
   const supabase = createClient();
   const [loads, setLoads] = useState<WorkOrderLoad[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,7 +111,7 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange 
   useEffect(() => { refresh(); }, [refresh]);
 
   useEffect(() => {
-    onTotalsChange?.({ loads: countLoads(loads), tons: totalLoadTons(loads) });
+    onTotalsChange?.({ loads: countLoads(loads), tons: totalLoadTons(loads), ...stampSpan(loads) });
   }, [loads, onTotalsChange]);
 
   // Write one stamp. Returns the error message when it didn't land.
@@ -218,6 +225,39 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange 
       refresh();
     }
     pingTicketProgress(workOrderId);
+  }
+
+  // The BOL photo, read: the ticket number and net tons go onto the load
+  // (and the material, when the load has none yet), and the photo stays
+  // with it. A scan that read nothing still keeps the picture.
+  async function applyBol(loadNo: number, f: BolScan, path: string) {
+    const existing = loads.find((l) => l.load_no === loadNo);
+    const patch: Record<string, unknown> = { bol_photo_path: path };
+    if (sv(f.ticket_number)) patch.ticket_number = sv(f.ticket_number);
+    if (sn(f.net_tons)) patch.tons = Number(f.net_tons);
+    if (sv(f.material) && !existing?.material) patch.material = sv(f.material);
+    const { error: err } = existing
+      ? await supabase.from('work_order_loads').update(patch).eq('id', existing.id)
+      : await supabase.from('work_order_loads').insert({ work_order_id: workOrderId, load_no: loadNo, ...patch });
+    if (err) { setError(err.message); return; }
+    setError('');
+    refresh();
+    pingTicketProgress(workOrderId);
+  }
+
+  async function clearBol(load: WorkOrderLoad) {
+    if (locked) return;
+    await supabase.from('work_order_loads').update({ bol_photo_path: null }).eq('id', load.id);
+    refresh();
+  }
+
+  // Open the BOL photo. The tab opens before the await — Safari blocks a
+  // window.open that comes after one.
+  async function openBol(path: string) {
+    const tab = window.open('about:blank', '_blank');
+    const { data } = await supabase.storage.from('work-tickets').createSignedUrl(path, 300);
+    if (data?.signedUrl) { if (tab) tab.location.href = data.signedUrl; else window.location.href = data.signedUrl; }
+    else tab?.close();
   }
 
   async function removeLoad(load: WorkOrderLoad) {
@@ -405,10 +445,14 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange 
           {LOAD_STAMPS.map((s) => stampButton(loadNo, s.key, s.label, load))}
         </div>
 
+        {/* The inputs are uncontrolled so typing doesn't fight the refresh;
+            the key remounts them when the saved value changes under them —
+            which is what a BOL scan does. */}
         <div className="grid grid-cols-3 gap-2 mt-2">
-          <label>
-            <span className="block text-[11px] text-gray-500 mb-0.5">Scale ticket #</span>
+          <label className="col-span-2">
+            <span className="block text-[11px] text-gray-500 mb-0.5">Ticket # (scale / BOL)</span>
             <input
+              key={`tn-${load?.ticket_number ?? ''}`}
               defaultValue={load?.ticket_number || ''}
               onBlur={(e) => setField(loadNo, 'ticket_number', e.target.value.trim())}
               disabled={locked}
@@ -418,6 +462,7 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange 
           <label>
             <span className="block text-[11px] text-gray-500 mb-0.5">Tons</span>
             <input
+              key={`tons-${load?.tons ?? ''}`}
               type="number" step="0.01" min="0" inputMode="decimal"
               defaultValue={load?.tons ?? ''}
               onBlur={(e) => setField(loadNo, 'tons', e.target.value.trim())}
@@ -425,15 +470,34 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange 
               className={input}
             />
           </label>
-          <label>
+          <label className="col-span-2">
             <span className="block text-[11px] text-gray-500 mb-0.5">Material</span>
             <input
+              key={`mat-${load?.material ?? ''}`}
               defaultValue={load?.material || ''}
+              placeholder={defaultMaterial || undefined}
               onBlur={(e) => setField(loadNo, 'material', e.target.value.trim())}
               disabled={locked}
               className={input}
             />
           </label>
+          <div>
+            <span className="block text-[11px] text-gray-500 mb-0.5">BOL photo</span>
+            {load?.bol_photo_path ? (
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => openBol(load.bol_photo_path!)}
+                  className="flex-1 px-2 py-1.5 text-sm rounded-md border border-emerald-300 bg-emerald-50 text-emerald-900 font-medium">
+                  ✓ Photo
+                </button>
+                {!locked && (
+                  <button type="button" onClick={() => clearBol(load)} title="Remove the photo" className="text-gray-400 hover:text-red-600 px-1">×</button>
+                )}
+              </div>
+            ) : (
+              <ScanButton kind="bol" bucket="work-tickets" folder="bol" small label="BOL" disabled={locked}
+                onResult={(f, p) => applyBol(loadNo, f as BolScan, p)} />
+            )}
+          </div>
         </div>
       </div>
     );

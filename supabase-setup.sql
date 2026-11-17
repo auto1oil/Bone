@@ -2568,6 +2568,10 @@ create table if not exists public.work_order_loads (
 -- Projects created before the column existed pick it up here (the create
 -- table above is a no-op on them).
 alter table public.work_order_loads add column if not exists material text;
+-- The photo of the scale ticket / BOL for this load (work-tickets bucket,
+-- under the driver's own "<uid>/bol/" folder). The scanner reads the ticket
+-- number and tons off it; the picture is the evidence either way.
+alter table public.work_order_loads add column if not exists bol_photo_path text;
 
 create index if not exists work_order_loads_wo_idx
   on public.work_order_loads (work_order_id, load_no);

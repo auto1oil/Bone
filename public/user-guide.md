@@ -244,30 +244,40 @@ plus deliveries and hours. Mechanics have the same screens.
 
 ### Fill out a haul ticket
 
-1. Tap **New Ticket**. Pick the order you're working under; the customer,
-   job, address, phase and rate fill themselves in and are locked. Add your
-   name, ticket number, truck number and plate number, the date, material,
-   pit address, and the truck type from the list.
-2. Tap **Save** once as a draft. That opens the 28 load lines.
-3. **Stamp each load with one tap.** Each load card has four buttons: Load
-   in, Load out, Unload in, Unload out. Tapping records the time that instant
-   and attaches your GPS position a moment later, so you still get an
-   accurate time in a pit with no signal. Tap a stamped time to clear it.
-   Type the scale ticket number, tons, and material for the load.
+The ticket fills itself in. You tap stamps, photograph BOLs, and get the
+foreman to sign. That's the whole day.
+
+1. Tap **New Ticket**. The head of the ticket is already filled: your name,
+   your truck, plate and truck type (from your fleet assignment or your last
+   ticket), today's date, and the job. The job is the order your last ticket
+   was on, if it's still open, or the only open one; otherwise pick it from
+   **Job (order)** at the top and the customer, job number, pit, job address
+   and material fill in. Pit and job address are map links.
+2. Tap **Start the day**. The load lines open up.
+3. **Stamp each load with one tap.** Each load has four buttons: Load in,
+   Load out, Unload in, Unload out. Tapping records the time that instant and
+   attaches your GPS position a moment later, so you still get an accurate
+   time in a pit with no signal. Tap a stamped time to clear it.
 4. **The floating button** appears after your first Load in, pre-armed with
    whichever stamp comes next, so the whole day is the same thumb on the same
    spot. Hold and drag it to park it anywhere; the phone remembers.
-5. Enter **Start** and **Stop** for the truck, **Driver time** start and end,
-   travel hours and down time. Hours and the amount calculate as you go.
-   Tonnage goes in for tonnage jobs.
-6. **Signed out**: loaded or empty, and the sign-out time.
-7. Take the **Ticket photo** of the paper ticket if there is one, and the
-   short ticket if there is one.
-8. **Signatures**: type your name and sign. Then hand the phone to the job
-   foreman, who types their name and signs. A ticket cannot be completed
-   without the foreman's signature.
-9. Tap **Complete**. It goes to the office. **Share** makes the paper-style
-   PDF to text or email to anyone.
+5. **BOL by photo.** On each load tap **BOL** and photograph the scale
+   ticket. The ticket number and net tons fill in, and the photo stays on
+   the load as the proof. Check the numbers. Material is only typed when a
+   load carried something other than the job's material.
+6. **Start and End set themselves.** Start is your first Load in. End is
+   your last Unload out. You never type a time. Clear a stamp and the time
+   moves with it.
+7. **Down time** (breakdown, stuck) and **Extra time** (waited at the pit or
+   the job, travel) are the two numbers you type, in hours, with a note on
+   what happened. Total hours shows as you go.
+8. Hand the phone to the **job foreman**: they type their name and sign. The
+   day can't be finished without it.
+9. Tap **Finish day**. It goes to the office. **Ticket PDF** makes the
+   paper-style ticket to text or email to anyone.
+
+The office can open the same ticket in the full form if something needs
+fixing by hand: a time, the rate, the signed-out state, a paper ticket photo.
 
 ### My Tickets
 
@@ -456,28 +466,29 @@ job: fill the haul ticket for the load the company put them on.
    filled in with the job, phase, date, carrier and your pay rate. Those
    fields are locked; the day's times and loads are yours. Open it. Use **New
    Ticket** only for a job that didn't come through as a load.
-3. Fill in your name, truck number and plate, material, pit address, and the
-   truck type.
+3. Your name, truck, plate and truck type come from your last ticket; fix
+   them if you swapped trucks. The material comes with the job.
 4. **Stamp each load**: Load in at the pit, Load out when loaded, Unload in at
    the site, Unload out when empty. One tap each. The time is recorded the
    instant you tap, and your location is attached a moment later. After the
    first tap a floating button follows you with whichever stamp comes next.
-   Add the scale ticket number, tons and material per load.
-5. Enter your Start and Stop, driver time, travel and down time, then loaded
-   or empty and the sign-out time.
-6. Take a photo of the paper ticket if you carry one.
+5. **BOL by photo.** Tap **BOL** on the load and photograph the scale
+   ticket; the ticket number and net tons fill in and the photo stays on the
+   load. Check the numbers.
+6. **Start and End set themselves**: first Load in, last Unload out. The only
+   numbers you type are **Down time** (breakdown, stuck) and **Extra time**
+   (waited, travel), in hours, with a note.
 7. **Pay method.** If your company's Auto 1 Funding link is active you'll see
    two choices: Standard Pay, which waits on Bone's pay run, and Factor
    Payment, which has Auto 1 Funding pay it. Picking Factor Payment opens a
    bill of sale from Auto 1 Funding: tap Open & sign, type your name over
    there, and come back. A green strip shows who signed and when. Without the
    link you only see Standard Pay.
-8. **Signatures.** Type your name and sign. Then the job foreman types their
-   name and signs on your phone. The ticket can't be completed without the
-   foreman.
-9. Tap **Complete**. A Factor Payment ticket also needs the signed bill of
+8. **Signature.** The job foreman types their name and signs on your phone.
+   The ticket can't be finished without the foreman.
+9. Tap **Finish day**. A Factor Payment ticket also needs the signed bill of
    sale first; if Auto 1 Funding can't be reached, completion still goes
-   through. **Share** makes the PDF to send to anyone.
+   through. **Ticket PDF** makes the PDF to send to anyone.
 
 **If the office sends it back**, the ticket shows their reason under My
 Tickets. Fix it and Complete again. On a Factor Payment ticket the bill of

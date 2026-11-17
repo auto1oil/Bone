@@ -9,7 +9,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
-import { pickEditable, ORDER_LOCKED_FIELDS } from '@/lib/work-orders';
+import { pickEditable, ORDER_LOCKED_FIELDS, stampSpan } from '@/lib/work-orders';
 import { withOrderMismatch } from '@/lib/order-match';
 import { requestBillOfSale, checkFactoringLink, sendTicketProgress } from '@/lib/factoring';
 import { runPlaceCheck } from '@/lib/place-check';
@@ -65,7 +65,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   // the form greys these fields out, and this strips them from anyone who
   // posts them anyway. The office editing the same ticket is not affected.
   const { data: actor } = await supabase
-    .from('profiles').select('hauler_id').eq('id', user.id).single();
+    .from('profiles').select('role, hauler_id').eq('id', user.id).single();
   if (actor?.hauler_id && before && (before.order_id || before.hauler_load_id)) {
     for (const k of ORDER_LOCKED_FIELDS) delete patch[k];
     if (Object.keys(patch).length === 0) {
@@ -82,6 +82,21 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (patch.payment_method === 'factor' && actor?.hauler_id) {
     const link = await checkFactoringLink(createAdminClient(), actor.hauler_id);
     if (link.status !== 'linked') patch.payment_method = 'standard';
+  }
+
+  // A crew member's finished day is clocked by the stamps, not by what the
+  // browser posted: start is the first Load in, stop the last Unload out.
+  // The form shows the same figures; this is the half that can't be edited.
+  // The office keeps its hand on the times when it edits a ticket itself.
+  const isOffice = !!actor && ['office', 'admin', 'master_admin'].includes(actor.role);
+  if (body.submit === true && !isOffice) {
+    const { data: loads } = await supabase
+      .from('work_order_loads').select('load_in_at, unload_out_at').eq('work_order_id', params.id);
+    const { firstIn, lastOut } = stampSpan((loads as { load_in_at: string | null; unload_out_at: string | null }[]) || []);
+    if (firstIn && lastOut) {
+      patch.start_at = firstIn; patch.stop_at = lastOut;
+      patch.driver_start_at = firstIn; patch.driver_end_at = lastOut;
+    }
   }
 
   const finalPatch = await withOrderMismatch(supabase, patch, before);
