@@ -2813,11 +2813,13 @@ alter table public.job_orders add column if not exists fuel_surcharge numeric(12
 
 -- Haulers no longer read the order book: it carries the customer's rate. The
 -- load they were dispatched already carries everything they need to do the
--- job — the site, the dates, the times, and their own rate.
+-- job — the site, the dates, the times, and their own rate. That includes a
+-- hauler's own drivers, who hold the 'driver' role too: only a login with no
+-- hauling company (Bone's own people) reads orders.
 drop policy if exists "job_orders read" on public.job_orders;
 create policy "job_orders read" on public.job_orders
   for select to authenticated
-  using (public.has_role(array['driver', 'mechanic', 'contractor', 'funder']));
+  using (public.has_role(array['driver', 'mechanic', 'contractor', 'funder']) and public.my_hauler_id() is null);
 
 -- ---- Adding customers by hand --------------------------------------------
 -- The customer directory used to be filled only by syncing from QuickBooks,

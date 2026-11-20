@@ -53,6 +53,14 @@ Check in this order and report which one it was:
   and extra time typed, the foreman's signature, Finish day. Office and admin
   get the full form with a toggle. On a crew submit the PATCH route re-derives
   start/stop from the loads, so posted times can't disagree with the stamps.
+- Dispatch to Bone's own drivers: the order page's "Send to Bone drivers"
+  (`components/AssignDrivers.tsx`) posts to `/api/job-orders/[id]/assign`,
+  office/admin only, which makes one draft ticket per driver from the order
+  (`submitted_by` and `assigned_to` = the driver, so it's theirs), skips a
+  driver already on that order that day, and sends a bell notification and a
+  push. Only Bone's active driver/mechanic logins (no `hauler_id`) can be
+  picked. Taking a job back deletes the untouched draft, so it is admin only.
+  Lessors still get orders through hauler loads.
 - Live progress to the funding app: `sendTicketProgress` in `lib/factoring.ts`
   posts an in-progress preview of a ticket to `{base}/progress` — only for a
   hauler whose link is `linked`, only while the ticket is open, only when
@@ -121,7 +129,8 @@ Each rule is enforced server-side (route check and/or RLS), never only in UI:
   The one exception is a hauling company adding its own drivers via
   `/api/haulers/drivers`. Public sign-up must stay OFF in Supabase Auth.
 - **Money**: customer rates and hauler pay rates are office + admin; haulers
-  never read `job_orders`. The one window is `/api/haulers/loads/[id]/order`,
+  never read `job_orders` — nor do their drivers (role `driver` with a
+  `hauler_id`); the read policy requires `my_hauler_id() is null`. The one window is `/api/haulers/loads/[id]/order`,
   which hands a hauler its own load's job details with `rate` and
   `fuel_surcharge` left out (keep that column list closed). There is no
   employee pay data in this app.

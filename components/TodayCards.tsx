@@ -58,6 +58,9 @@ export default function TodayCards() {
                 <div className="min-w-0">
                   <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                     {fmtDate(w.job_date)}{w.trucking_company ? ` · ${w.trucking_company}` : ''}
+                    {w.assigned_to && !sentBack && !(w.loads_count > 0) && (
+                      <span className="ml-2 normal-case tracking-normal text-accent-400">New job from the office</span>
+                    )}
                   </div>
                   <div className="text-lg font-semibold text-gray-900 truncate">
                     {[w.job_number ? `Job ${w.job_number}` : null, w.job_name].filter(Boolean).join(' · ') || 'Haul ticket'}

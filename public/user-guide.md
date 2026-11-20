@@ -165,7 +165,22 @@ Open an order later to edit it or to clear flags (below). The order page
 lists every ticket filed against it. **Copy** on an order starts a new one
 with everything but the dates filled in, for jobs that repeat.
 
-### 2. Send loads to a lessor (the offer)
+### 2. Send it to Bone's own drivers
+
+Open the order. Under **Send to Bone drivers**, pick the day, tick each
+driver, and leave their truck on **Usual truck** or pick another unit from
+Fleet. Tap **Send**.
+
+Each driver gets a push and a bell notification, and the job sits at the top
+of their home screen as **New job from the office** with the ticket already
+filled in: job, pit, job address, material, their name and truck. A driver
+already on that order that day is greyed out, so nobody gets it twice.
+
+The order's ticket list shows each driver as **Sent, not started**, then
+**Running** with the load count, then the ticket's status once it's in. An
+admin can **Take back** a job the driver hasn't started; the driver is told.
+
+### 3. Send loads to a lessor (the offer)
 
 Two places do the same thing.
 
@@ -182,7 +197,7 @@ phone; a decline comes back with a reason. On the company page each load
 shows Offered, Accepted, Assigned, Declined, or Done. Accepting starts their
 haul ticket with the job, phase, date and pay rate already filled in.
 
-### 3. Review and approve tickets
+### 4. Review and approve tickets
 
 Tickets tab. The bell shows how many are waiting.
 
@@ -229,7 +244,7 @@ Crew fills the ticket → Completed (waiting on office) → Office approves?
                                                                    or by Auto 1 Funding if Factor Payment
 ```
 
-### 4. Flags on the order
+### 5. Flags on the order
 
 A ticket at a different rate, on a different phase or job, or worked outside
 the order's dates is flagged rather than quietly billed. The order page lists
@@ -246,6 +261,10 @@ plus deliveries and hours. Mechanics have the same screens.
 
 The ticket fills itself in. You tap stamps, photograph BOLs, and get the
 foreman to sign. That's the whole day.
+
+**When the office sends you a job**, your phone buzzes and the job is at the
+top of your home screen marked **New job from the office**, already filled
+in. Tap **Start** and go straight to step 3.
 
 1. Tap **New Ticket**. The head of the ticket is already filled: your name,
    your truck, plate and truck type (from your fleet assignment or your last

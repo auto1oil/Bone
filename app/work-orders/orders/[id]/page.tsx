@@ -4,6 +4,7 @@ import MapLink from '@/components/MapLink';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase-browser';
 import OrderForm from '@/components/OrderForm';
+import AssignDrivers from '@/components/AssignDrivers';
 import {
   ORDER_STATUS_LABEL, ORDER_STATUS_TONE, orderSpan, type JobOrder,
 } from '@/lib/job-orders';
@@ -23,6 +24,27 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: me } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+      setIsAdmin(me?.role === 'admin' || me?.role === 'master_admin');
+    })();
+  }, [supabase]);
+
+  // An admin taking back a job a driver hasn't started.
+  async function takeBack(t: WorkOrder) {
+    if (!confirm(`Take this job back from ${t.driver_name || 'the driver'}? Their ticket is removed and they're told.`)) return;
+    setBusy(t.id); setError('');
+    const res = await fetch(`/api/job-orders/${params.id}/assign?ticket=${t.id}`, { method: 'DELETE' });
+    const json = await res.json().catch(() => ({ ok: false, error: 'Network error' }));
+    setBusy('');
+    if (!json.ok) { setError(json.error || 'Could not take it back.'); return; }
+    refresh();
+  }
 
   const refresh = useCallback(async () => {
     const { data: o } = await supabase
@@ -138,6 +160,17 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
         {order.notes && <p className="text-sm text-gray-600 mt-3 whitespace-pre-wrap">{order.notes}</p>}
       </div>
 
+      {(order.status === 'open' || order.status === 'active') && (
+        <AssignDrivers
+          order={order}
+          takenIds={(day) => new Set(tickets
+            .filter((t) => t.job_date === day)
+            .flatMap((t) => [t.assigned_to, t.submitted_by])
+            .filter((x): x is string => !!x))}
+          onSent={refresh}
+        />
+      )}
+
       <div className={card}>
         <div className="flex items-baseline justify-between gap-2 flex-wrap mb-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
@@ -153,8 +186,9 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
 
         {tickets.length === 0 ? (
           <p className="text-sm text-gray-500">
-            Nothing filed against this order yet. A crew picks it on the ticket
-            form, or it fills in when a hauler accepts a load for it.
+            Nothing filed against this order yet. Send it to drivers above, a
+            crew picks it on the ticket form, or it fills in when a hauler
+            accepts a load for it.
           </p>
         ) : (
           <div className="space-y-2">
@@ -187,9 +221,23 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
                       )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_TONE[t.status as WorkOrderStatus]}`}>
-                        {STATUS_LABEL[t.status as WorkOrderStatus]}
-                      </span>
+                      {/* A draft on a driver's phone: has it started? */}
+                      {t.status === 'draft' ? (
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                          t.loads_count > 0 ? 'bg-sky-50 text-sky-800 border-sky-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                          {t.loads_count > 0 ? `Running · ${t.loads_count} ${t.loads_count === 1 ? 'load' : 'loads'}` : 'Sent · not started'}
+                        </span>
+                      ) : (
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_TONE[t.status as WorkOrderStatus]}`}>
+                          {STATUS_LABEL[t.status as WorkOrderStatus]}
+                        </span>
+                      )}
+                      {isAdmin && t.status === 'draft' && t.assigned_to && !(t.loads_count > 0) && (
+                        <button onClick={() => takeBack(t)} disabled={busy === t.id}
+                          className="text-xs text-red-600 hover:underline disabled:opacity-50">
+                          {busy === t.id ? '…' : 'Take back'}
+                        </button>
+                      )}
                     </div>
                   </div>
                   {isFlagged && (
