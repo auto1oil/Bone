@@ -292,7 +292,12 @@ export async function buildTicketPdf(
   const loadsS = countLoads(loads) ? `${countLoads(loads)}${tons > 0 ? `     (${tons.toFixed(2)} tons)` : ''}` : '';
   fill('TOTAL LOADS', lx, totalsMid - 8, ty, loadsS, 9, 9); ty -= 16;
   fill('TRUCK HOURS', lx, totalsMid - 8, ty, onSite > 0 ? `${onSite.toFixed(2)}${span ? `   (${span})` : ''}` : span, 9, 9); ty -= 16;
-  fill('TRAVEL TIME', lx, totalsMid - 8, ty, wo.travel_hours != null ? `${wo.travel_hours} hrs` : '', 9, 9); ty -= 16;
+  const travelS = [
+    wo.travel_hours != null ? `${wo.travel_hours} hrs` : null,
+    Number(wo.extra_hours || 0) > 0 ? `+ ${wo.extra_hours} hrs waited` : null,
+    Number(wo.down_hours || 0) > 0 ? `+ ${wo.down_hours} hrs down` : null,
+  ].filter(Boolean).join('   ');
+  fill('TRAVEL TIME', lx, totalsMid - 8, ty, travelS, 9, 9); ty -= 16;
   fill('TOTAL HOURS', lx, totalsMid - 8, ty, totalHours(wo) > 0 ? totalHours(wo).toFixed(2) : '', 9, 9); ty -= 16;
   fill('LAST LOAD UNLOADED', lx, totalsMid - 8, ty, fmtClock(lastUnload ?? null), 9, 9);
 

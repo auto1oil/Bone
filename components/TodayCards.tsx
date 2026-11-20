@@ -66,7 +66,11 @@ export default function TodayCards() {
                     {[w.job_number ? `Job ${w.job_number}` : null, w.job_name].filter(Boolean).join(' · ') || 'Haul ticket'}
                   </div>
                   <div className="text-sm text-gray-600 truncate">
-                    {[w.job_address, w.unit_number ? `Truck ${w.unit_number}` : null].filter(Boolean).join(' · ')}
+                    {[
+                      w.report_time ? `Start ${new Date(`2000-01-01T${w.report_time.slice(0, 5)}:00`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : null,
+                      w.job_address,
+                      w.unit_number ? `Truck ${w.unit_number}` : null,
+                    ].filter(Boolean).join(' · ')}
                   </div>
                   <div className="text-sm text-gray-700 mt-1">
                     {sentBack

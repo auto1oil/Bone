@@ -89,6 +89,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   // The form shows the same figures; this is the half that can't be edited.
   // The office keeps its hand on the times when it edits a ticket itself.
   const isOffice = !!actor && ['office', 'admin', 'master_admin'].includes(actor.role);
+  // Travel on a job is the office's number, set per job on the order. A
+  // crew member's ticket against an order keeps it; their waiting time goes
+  // in extra_hours instead.
+  if (!isOffice && before?.order_id) delete patch.travel_hours;
   if (body.submit === true && !isOffice) {
     const { data: loads } = await supabase
       .from('work_order_loads').select('load_in_at, unload_out_at').eq('work_order_id', params.id);

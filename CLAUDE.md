@@ -61,6 +61,13 @@ Check in this order and report which one it was:
   push. Only Bone's active driver/mechanic logins (no `hauler_id`) can be
   picked. Taking a job back deletes the untouched draft, so it is admin only.
   Lessors still get orders through hauler loads.
+  The send carries a start time (`work_orders.report_time`, per driver or
+  for the whole send, shown on the driver's home card, ticket and push) and
+  the job's travel time, which is saved back to the order.
+- Travel vs waiting: `travel_hours` is the office's number per job (order →
+  ticket); a crew member can't change it on a ticket that has an order (both
+  work-order routes enforce it). The driver's waiting time is `extra_hours`.
+  `totalHours` = on site + travel + down + extra.
 - Live progress to the funding app: `sendTicketProgress` in `lib/factoring.ts`
   posts an in-progress preview of a ticket to `{base}/progress` — only for a
   hauler whose link is `linked`, only while the ticket is open, only when

@@ -47,8 +47,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const body = (await req.json().catch(() => ({}))) as {
     job_date?: string;
-    assignments?: { driver_id?: string; vehicle_id?: string | null }[];
+    // When to be there, 'HH:MM'. One for the send, or per driver below.
+    start_time?: string | null;
+    // Travel for the job, in hours. Saved back onto the order so the next
+    // send (and any ticket a driver starts themselves) uses it too.
+    travel_hours?: number | string | null;
+    assignments?: { driver_id?: string; vehicle_id?: string | null; start_time?: string | null }[];
   };
+  const asTime = (v: unknown) => (typeof v === 'string' && /^\d{2}:\d{2}$/.test(v) ? v : null);
+  const sendStart = asTime(body.start_time);
+  const travelRaw = body.travel_hours === '' || body.travel_hours == null ? null : Number(body.travel_hours);
+  const travel = travelRaw != null && Number.isFinite(travelRaw) && travelRaw >= 0 && travelRaw <= 24 ? travelRaw : null;
   const jobDate = typeof body.job_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.job_date) ? body.job_date : '';
   const wanted = (body.assignments || []).filter((a) => typeof a.driver_id === 'string' && a.driver_id);
   if (!jobDate) return NextResponse.json({ ok: false, error: 'pick the day' }, { status: 400 });
@@ -60,6 +69,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!order) return NextResponse.json({ ok: false, error: 'order not found' }, { status: 404 });
   if (order.status !== 'open' && order.status !== 'active') {
     return NextResponse.json({ ok: false, error: 'that order is closed — reopen it to send it out' }, { status: 400 });
+  }
+  // The job's travel time lives on the order; a change made while sending
+  // it out is kept there.
+  if (travel !== (order.travel_hours == null ? null : Number(order.travel_hours))) {
+    await db.from('job_orders').update({ travel_hours: travel }).eq('id', order.id);
+    order.travel_hours = travel;
   }
 
   const driverIds = Array.from(new Set(wanted.map((a) => a.driver_id!)));
@@ -127,6 +142,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       truck_type: (last.truck_type as string) || null,
       truck_type_tons: (last.truck_type_tons as number) ?? null,
       trucking_company: (last.trucking_company as string) || null,
+      travel_hours: order.travel_hours ?? null,
+      report_time: asTime(a.start_time) || sendStart,
       status: 'draft',
       submitted_by: p.id,
       assigned_to: p.id,
@@ -141,7 +158,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // Tell them. Best-effort: the ticket is on their home screen either way.
     const when = new Date(`${jobDate}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' });
     const title = `New job: ${order.job_name || (order.job_number ? `Job ${order.job_number}` : `Order #${order.order_number}`)}`;
-    const text = [when, order.pickup_address ? `load at ${order.pickup_address}` : null, row.unit_number ? `truck ${row.unit_number}` : null]
+    const startAt = row.report_time as string | null;
+    const startLabel = startAt
+      ? new Date(`2000-01-01T${startAt}:00`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+      : null;
+    const text = [startLabel ? `${when} at ${startLabel}` : when, order.pickup_address ? `load at ${order.pickup_address}` : null, row.unit_number ? `truck ${row.unit_number}` : null]
       .filter(Boolean).join(' · ');
     const link = `/tickets/${(wo as { id: string }).id}`;
     try {

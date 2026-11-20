@@ -77,6 +77,8 @@ function toDraft(wo: Partial<WorkOrder> | null): Draft {
     stop_at: toLocalInput(wo?.stop_at ?? null),
     travel_hours: v(wo?.travel_hours),
     down_hours: v(wo?.down_hours),
+    extra_hours: v(wo?.extra_hours),
+    report_time: v(wo?.report_time).slice(0, 5),
     rate: v(wo?.rate),
     rate_unit: v(wo?.rate_unit),
     tonnage: v(wo?.tonnage),
@@ -387,6 +389,7 @@ export default function WorkOrderForm({
     stop_at: fromLocalInput(draft.stop_at),
     travel_hours: Number(draft.travel_hours) || 0,
     down_hours: Number(draft.down_hours) || 0,
+    extra_hours: Number(draft.extra_hours) || 0,
     rate: Number(draft.rate) || 0,
     rate_unit: draft.rate_unit || null,
     tonnage: Number(draft.tonnage) || 0,
@@ -431,6 +434,8 @@ export default function WorkOrderForm({
       stop_at: fromLocalInput(draft.stop_at),
       travel_hours: draft.travel_hours === '' ? null : Number(draft.travel_hours),
       down_hours: draft.down_hours === '' ? null : Number(draft.down_hours),
+      extra_hours: draft.extra_hours === '' ? null : Number(draft.extra_hours),
+      report_time: draft.report_time || null,
       rate: draft.rate === '' ? null : Number(draft.rate),
       rate_unit: draft.rate_unit || null,
       tonnage: draft.tonnage === '' ? null : Number(draft.tonnage),
@@ -784,6 +789,9 @@ export default function WorkOrderForm({
   const clock = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '');
   const weekday = draft.job_date ? new Date(`${draft.job_date}T12:00:00`).toLocaleDateString([], { weekday: 'short' }).toUpperCase() : '';
   const customerName = customers.find((c) => c.id === draft.customer_id)?.name || '';
+  const reportLabel = draft.report_time
+    ? new Date(`2000-01-01T${draft.report_time}:00`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : '';
   const headRow = (k: string, v: React.ReactNode) => (v ? (
     <div className="grid grid-cols-[6.5rem_1fr] gap-2 py-0.5"><span className="text-gray-500">{k}</span><span className="text-gray-900">{v}</span></div>
   ) : null);
@@ -807,7 +815,10 @@ export default function WorkOrderForm({
         </div>
 
         <div className="flex items-center justify-between gap-2 mt-3">
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-brand-700 text-brand-700">{weekday}</span>
+          <span className="flex items-center gap-2">
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-brand-700 text-brand-700">{weekday}</span>
+            {reportLabel && <span className="text-sm font-semibold text-accent-400">Start {reportLabel}</span>}
+          </span>
           <input type="date" value={draft.job_date} onChange={(e) => set('job_date', e.target.value)} disabled={locked} className={`${input} w-auto font-semibold`} />
         </div>
 
@@ -907,9 +918,17 @@ export default function WorkOrderForm({
             <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.down_hours} onChange={(e) => set('down_hours', e.target.value)} disabled={locked} placeholder="0" className={`${input} text-right`} />
           </div>
           <div className="grid grid-cols-[1fr_5.5rem] gap-2 items-center">
-            <div><div className="text-gray-700">Extra time (h)</div><div className="text-[11px] text-gray-500">waited at the pit or the job, travel, detours</div></div>
-            <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.travel_hours} onChange={(e) => set('travel_hours', e.target.value)} disabled={locked} placeholder="0" className={`${input} text-right`} />
+            <div><div className="text-gray-700">Extra time (h)</div><div className="text-[11px] text-gray-500">waited at the pit or the job, detours</div></div>
+            <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.extra_hours} onChange={(e) => set('extra_hours', e.target.value)} disabled={locked} placeholder="0" className={`${input} text-right`} />
           </div>
+          {draft.order_id ? (
+            <div className="flex justify-between"><span className="text-gray-500">Travel (set by the office)</span><span className="tabular-nums">{draft.travel_hours ? `${Number(draft.travel_hours).toFixed(2)} h` : 'none'}</span></div>
+          ) : (
+            <div className="grid grid-cols-[1fr_5.5rem] gap-2 items-center">
+              <div><div className="text-gray-700">Travel (h)</div><div className="text-[11px] text-gray-500">no job picked, so add it here</div></div>
+              <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.travel_hours} onChange={(e) => set('travel_hours', e.target.value)} disabled={locked} placeholder="0" className={`${input} text-right`} />
+            </div>
+          )}
           <div className="flex justify-between pt-2 border-t border-gray-100"><span className="text-gray-500">Total hours</span><span className="font-semibold tabular-nums">{hours.toFixed(1)}</span></div>
           {loadTotals.lastOut && <div className="flex justify-between"><span className="text-gray-500">Last load unloaded</span><span className="tabular-nums">{clock(loadTotals.lastOut)}</span></div>}
           {isHauler && (preview.rate > 0) && (
@@ -1126,6 +1145,12 @@ export default function WorkOrderForm({
           </label>
           <label><span className={label}>Down time (hrs)</span>
             <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.down_hours} onChange={(e) => set('down_hours', e.target.value)} disabled={locked} className={input} />
+          </label>
+          <label><span className={label}>Extra time — waited (hrs)</span>
+            <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.extra_hours} onChange={(e) => set('extra_hours', e.target.value)} disabled={locked} className={input} />
+          </label>
+          <label><span className={label}>Start time (sent to the driver)</span>
+            <input type="time" value={draft.report_time} onChange={(e) => set('report_time', e.target.value)} disabled={locked} className={input} />
           </label>
           <label><span className={label}>Tonnage</span>
             <input type="number" step="0.01" min="0" inputMode="decimal" value={draft.tonnage} onChange={(e) => set('tonnage', e.target.value)} disabled={locked} className={input} />

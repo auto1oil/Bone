@@ -34,6 +34,13 @@ export default function AssignDrivers({
     return t;
   });
   const [picked, setPicked] = useState<Record<string, string>>({}); // driver id → truck id ('' = usual)
+  // When to be there: one for the send, and a per-driver time when someone
+  // needs to start earlier or later. Starts on the order's daily start.
+  const [startTime, setStartTime] = useState(() => (order.start_time || '').slice(0, 5));
+  const [ownStart, setOwnStart] = useState<Record<string, string>>({});
+  // The job's travel time. Starts on the order's; a change is saved back to
+  // the order so every ticket on this job carries it.
+  const [travel, setTravel] = useState(() => (order.travel_hours != null ? String(order.travel_hours) : ''));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -71,7 +78,9 @@ export default function AssignDrivers({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           job_date: day,
-          assignments: chosen.map((id) => ({ driver_id: id, vehicle_id: picked[id] || null })),
+          start_time: startTime || null,
+          travel_hours: travel.trim() === '' ? null : Number(travel),
+          assignments: chosen.map((id) => ({ driver_id: id, vehicle_id: picked[id] || null, start_time: ownStart[id] || null })),
         }),
       });
       const json = await res.json();
@@ -83,6 +92,7 @@ export default function AssignDrivers({
         ...skipped.map((s) => `${s.driver}: ${s.reason}.`),
       ].filter(Boolean).join(' '));
       setPicked({});
+      setOwnStart({});
       onSent();
     } catch {
       setError('Network error — try again.');
@@ -95,14 +105,24 @@ export default function AssignDrivers({
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4">
-      <div className="flex items-baseline justify-between gap-2 flex-wrap mb-1">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Send to Bone drivers</h2>
-        <label className="text-sm text-gray-600 flex items-center gap-2">Day
-          <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className={sel} />
-        </label>
-      </div>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-1">Send to Bone drivers</h2>
       <p className="text-xs text-gray-500 mb-3">
         Each driver you tick gets this job as a ticket on their home screen, already filled in, and a notification on their phone.
+      </p>
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <label className="text-xs text-gray-600">Day
+          <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className={`${sel} w-full mt-1`} />
+        </label>
+        <label className="text-xs text-gray-600">Start time
+          <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={`${sel} w-full mt-1`} />
+        </label>
+        <label className="text-xs text-gray-600">Travel time (hrs)
+          <input type="number" step="0.25" min="0" inputMode="decimal" value={travel} onChange={(e) => setTravel(e.target.value)}
+            placeholder="0" className={`${sel} w-full mt-1`} />
+        </label>
+      </div>
+      <p className="text-[11px] text-gray-500 -mt-2 mb-3">
+        Travel is for this job and is added to every driver&apos;s hours on it. Drivers can&apos;t change it.
       </p>
 
       {drivers.length === 0 ? (
@@ -119,11 +139,18 @@ export default function AssignDrivers({
                   <span className="truncate">{d.full_name || d.email}</span>
                   {has && <span className="text-[11px] text-emerald-700 shrink-0">on it this day</span>}
                 </label>
-                {on && trucks.length > 0 && (
-                  <select value={picked[d.id]} onChange={(e) => setPicked((p) => ({ ...p, [d.id]: e.target.value }))} className={sel}>
-                    <option value="">Usual truck</option>
-                    {trucks.map((t) => <option key={t.id} value={t.id}>Unit {t.unit_number}{t.name ? ` · ${t.name}` : ''}</option>)}
-                  </select>
+                {on && (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <input type="time" value={ownStart[d.id] ?? startTime}
+                      onChange={(e) => setOwnStart((o) => ({ ...o, [d.id]: e.target.value }))}
+                      title="This driver's start time" className={sel} />
+                    {trucks.length > 0 && (
+                      <select value={picked[d.id]} onChange={(e) => setPicked((p) => ({ ...p, [d.id]: e.target.value }))} className={sel}>
+                        <option value="">Usual truck</option>
+                        {trucks.map((t) => <option key={t.id} value={t.id}>Unit {t.unit_number}{t.name ? ` · ${t.name}` : ''}</option>)}
+                      </select>
+                    )}
+                  </div>
                 )}
               </div>
             );

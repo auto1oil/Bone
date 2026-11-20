@@ -205,6 +205,7 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
                         {t.job_date || 'Ticket'}
                         {t.unit_number ? ` · Unit ${t.unit_number}` : ''}
                         {t.driver_name ? ` · ${t.driver_name}` : ''}
+                        {t.report_time ? ` · start ${new Date(`2000-01-01T${t.report_time.slice(0, 5)}:00`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
                       </Link>
                       <div className="text-xs text-gray-500 mt-0.5">
                         {[

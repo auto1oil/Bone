@@ -95,8 +95,13 @@ export type WorkOrder = {
   job_date: string | null;
   start_at: string | null;
   stop_at: string | null;
+  // Set per job by the office (on the order); the driver can't change it.
   travel_hours: number | null;
   down_hours: number | null;
+  // Time the driver waited at the pit or the job — the driver's own number.
+  extra_hours: number | null;
+  // When the office wants the driver there ('HH:MM:SS'), set on dispatch.
+  report_time: string | null;
   rate: number | null;
   // What the rate applies to: 'hour', 'ton', 'load', or 'day'. Inherited from
   // the order (or the dispatched load). Null on old tickets, which fall back
@@ -226,7 +231,7 @@ export const EDITABLE_FIELDS = [
   'signed_out_state', 'sign_out_at', 'foreman_signature_path',
   'signature_name', 'signature_signed_at',
   'foreman_signature_name', 'foreman_signature_signed_at',
-  'start_at', 'stop_at', 'travel_hours', 'down_hours', 'rate', 'rate_unit',
+  'start_at', 'stop_at', 'travel_hours', 'down_hours', 'extra_hours', 'report_time', 'rate', 'rate_unit',
   'tonnage', 'tonnage_type', 'ticket_photo_path', 'short_ticket_path',
   'signature_path', 'contractor_id', 'payment_method', 'notes',
 ] as const;
@@ -242,7 +247,7 @@ export const ORDER_LOCKED_FIELDS = [
 ] as const;
 
 const NUMERIC_FIELDS = new Set([
-  'travel_hours', 'down_hours', 'rate', 'tonnage', 'truck_type_tons',
+  'travel_hours', 'down_hours', 'extra_hours', 'rate', 'tonnage', 'truck_type_tons',
   'office_travel_hours', 'office_total_hours',
 ]);
 
@@ -274,11 +279,12 @@ export function onSiteHours(startAt: string | null, stopAt: string | null): numb
   return Math.round((ms / 3_600_000) * 100) / 100;
 }
 
-// Total billable hours: on-site + travel + down time.
-export function totalHours(wo: Pick<WorkOrder, 'start_at' | 'stop_at' | 'travel_hours' | 'down_hours'>): number {
+// Total billable hours: on-site + travel + down time + time waited.
+export function totalHours(wo: Pick<WorkOrder, 'start_at' | 'stop_at' | 'travel_hours' | 'down_hours'> & { extra_hours?: number | null }): number {
   const sum = onSiteHours(wo.start_at, wo.stop_at)
     + Number(wo.travel_hours || 0)
-    + Number(wo.down_hours || 0);
+    + Number(wo.down_hours || 0)
+    + Number(wo.extra_hours || 0);
   return Math.round(sum * 100) / 100;
 }
 
@@ -286,7 +292,7 @@ export function totalHours(wo: Pick<WorkOrder, 'start_at' | 'stop_at' | 'travel_
 // callers holding a form draft (no trigger-maintained rollups) still fit.
 type Billable = Pick<WorkOrder,
   'start_at' | 'stop_at' | 'travel_hours' | 'down_hours' | 'tonnage'>
-  & { rate_unit?: string | null; loads_tons?: number | null; loads_count?: number | null };
+  & { extra_hours?: number | null; rate_unit?: string | null; loads_tons?: number | null; loads_count?: number | null };
 
 // What the ticket bills: the rate times whatever quantity its rate_unit says.
 export function ticketAmount(wo: Billable & Pick<WorkOrder, 'rate'>,

@@ -241,9 +241,12 @@ export default function OrderForm({ order, template = null }: { order: JobOrder 
               Shown at audit time so the checker has it in front of them.
             </span>
           </label>
-          <label><span className={label}>Travel hours</span>
+          <label><span className={label}>Travel time for this job (hrs)</span>
             <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.travel_hours}
               onChange={(e) => set('travel_hours', e.target.value)} className={input} />
+            <span className="block mt-1 text-[11px] text-gray-500">
+              Added to every driver&apos;s hours on this job. Drivers can&apos;t change it.
+            </span>
           </label>
           <label><span className={label}>Down time (hrs)</span>
             <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.down_hours}

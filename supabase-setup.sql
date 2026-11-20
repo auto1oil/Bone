@@ -2568,6 +2568,14 @@ create table if not exists public.work_order_loads (
 -- Projects created before the column existed pick it up here (the create
 -- table above is a no-op on them).
 alter table public.work_order_loads add column if not exists material text;
+-- When the office wants the driver there, set when the order is sent to them.
+-- Shown on the driver's home card and ticket; not a billing time (billing
+-- runs off the stamps).
+alter table public.work_orders add column if not exists report_time time;
+-- Time the driver waited at the pit or the job, typed by the driver. Kept
+-- apart from travel_hours, which the office sets per job on the order and
+-- the driver can't change. Billable, like travel and down time.
+alter table public.work_orders add column if not exists extra_hours numeric(6,2);
 -- The photo of the scale ticket / BOL for this load (work-tickets bucket,
 -- under the driver's own "<uid>/bol/" folder). The scanner reads the ticket
 -- number and tons off it; the picture is the evidence either way.

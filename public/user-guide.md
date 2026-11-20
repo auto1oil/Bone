@@ -167,13 +167,20 @@ with everything but the dates filled in, for jobs that repeat.
 
 ### 2. Send it to Bone's own drivers
 
-Open the order. Under **Send to Bone drivers**, pick the day, tick each
-driver, and leave their truck on **Usual truck** or pick another unit from
-Fleet. Tap **Send**.
+Open the order. Under **Send to Bone drivers**, pick the **day**, the
+**start time** (it starts on the order's daily start), and the job's
+**travel time**. Tick each driver. A ticked driver can get their own start
+time if they need to be there earlier or later, and stays on **Usual truck**
+unless you pick another unit from Fleet. Tap **Send**.
+
+**Travel time is per job.** It's set on the order (Create or Edit order,
+"Travel time for this job") or right here when you send it, and a change here
+is saved back to the order. It's added to every driver's hours on that job,
+and drivers can't change it.
 
 Each driver gets a push and a bell notification, and the job sits at the top
-of their home screen as **New job from the office** with the ticket already
-filled in: job, pit, job address, material, their name and truck. A driver
+of their home screen as **New job from the office** with the start time and
+the ticket already filled in: job, pit, job address, material, their name and truck. A driver
 already on that order that day is greyed out, so nobody gets it twice.
 
 The order's ticket list shows each driver as **Sent, not started**, then
@@ -263,8 +270,9 @@ The ticket fills itself in. You tap stamps, photograph BOLs, and get the
 foreman to sign. That's the whole day.
 
 **When the office sends you a job**, your phone buzzes and the job is at the
-top of your home screen marked **New job from the office**, already filled
-in. Tap **Start** and go straight to step 3.
+top of your home screen marked **New job from the office**, with your start
+time, already filled in. To get the buzz, turn on **Phone notifications**
+once under Settings (the gear, top right) and allow them when the phone asks. Tap **Start** and go straight to step 3.
 
 1. Tap **New Ticket**. The head of the ticket is already filled: your name,
    your truck, plate and truck type (from your fleet assignment or your last
@@ -288,8 +296,9 @@ in. Tap **Start** and go straight to step 3.
    your last Unload out. You never type a time. Clear a stamp and the time
    moves with it.
 7. **Down time** (breakdown, stuck) and **Extra time** (waited at the pit or
-   the job, travel) are the two numbers you type, in hours, with a note on
-   what happened. Total hours shows as you go.
+   the job) are the two numbers you type, in hours, with a note on what
+   happened. **Travel** is set by the office for each job and shows under
+   them. Total hours shows as you go.
 8. Hand the phone to the **job foreman**: they type their name and sign. The
    day can't be finished without it.
 9. Tap **Finish day**. It goes to the office. **Ticket PDF** makes the
@@ -496,7 +505,7 @@ job: fill the haul ticket for the load the company put them on.
    load. Check the numbers.
 6. **Start and End set themselves**: first Load in, last Unload out. The only
    numbers you type are **Down time** (breakdown, stuck) and **Extra time**
-   (waited, travel), in hours, with a note.
+   (waited), in hours, with a note. Travel comes with the job.
 7. **Pay method.** If your company's Auto 1 Funding link is active you'll see
    two choices: Standard Pay, which waits on Bone's pay run, and Factor
    Payment, which has Auto 1 Funding pay it. Picking Factor Payment opens a

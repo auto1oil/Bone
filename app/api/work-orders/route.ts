@@ -87,6 +87,15 @@ export async function POST(req: Request) {
     if (link.status !== 'linked') row.payment_method = 'standard';
   }
 
+  // Travel on a job is the office's number, set per job on the order — a
+  // crew-filed ticket against an order takes it from there, whatever was
+  // posted. (Read with the service role: a hauler's people can't read orders.)
+  if (row.order_id && !['office', 'admin', 'master_admin'].includes(actor.role)) {
+    const { data: ord } = await createAdminClient()
+      .from('job_orders').select('travel_hours').eq('id', row.order_id as string).maybeSingle();
+    row.travel_hours = (ord as { travel_hours: number | null } | null)?.travel_hours ?? null;
+  }
+
   const finalRow = await withOrderMismatch(supabase, row, null);
 
   const { data, error } = await supabase
