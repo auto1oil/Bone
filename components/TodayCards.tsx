@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import type { WorkOrder } from '@/lib/work-orders';
+import { ticketLabel, type WorkOrder } from '@/lib/work-orders';
 
 // A driver's day at a glance: every open ticket of theirs as one card with
 // one big button. A ticket the office sent back is a card too, with the
@@ -57,13 +57,13 @@ export default function TodayCards() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    {fmtDate(w.job_date)}{w.trucking_company ? ` · ${w.trucking_company}` : ''}
+                    {ticketLabel(w)} · {fmtDate(w.job_date)}{w.paper ? ' · paper copy' : ''}{w.trucking_company ? ` · ${w.trucking_company}` : ''}
                     {w.assigned_to && !sentBack && !(w.loads_count > 0) && (
                       <span className="ml-2 normal-case tracking-normal text-accent-400">New job from the office</span>
                     )}
                   </div>
                   <div className="text-lg font-semibold text-gray-900 truncate">
-                    {[w.job_number ? `Job ${w.job_number}` : null, w.job_name].filter(Boolean).join(' · ') || 'Haul ticket'}
+                    {[w.job_number ? `Job ${w.job_number}` : null, w.job_name].filter(Boolean).join(' · ') || 'No job picked yet'}
                   </div>
                   <div className="text-sm text-gray-600 truncate">
                     {[
@@ -75,7 +75,9 @@ export default function TodayCards() {
                   <div className="text-sm text-gray-700 mt-1">
                     {sentBack
                       ? <span className="text-red-700">Sent back: {w.rejected_reason || 'see the office note'}</span>
-                      : <>{w.loads_count || 0} {w.loads_count === 1 ? 'load' : 'loads'} stamped so far{w.loads_tons ? ` · ${Number(w.loads_tons).toFixed(1)} tons` : ''}</>}
+                      : w.paper
+                        ? <>Paper copy: add the photo and the totals</>
+                        : <>{w.loads_count || 0} {w.loads_count === 1 ? 'load' : 'loads'} stamped so far{w.loads_tons ? ` · ${Number(w.loads_tons).toFixed(1)} tons` : ''}</>}
                   </div>
                 </div>
                 <span className={`shrink-0 px-4 py-2.5 rounded-lg text-sm font-semibold text-white ${sentBack ? 'bg-red-700' : 'bg-brand-700'}`}>

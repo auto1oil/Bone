@@ -2576,6 +2576,31 @@ alter table public.work_orders add column if not exists report_time time;
 -- apart from travel_hours, which the office sets per job on the order and
 -- the driver can't change. Billable, like travel and down time.
 alter table public.work_orders add column if not exists extra_hours numeric(6,2);
+-- ---- Haul ticket, per the dispatch spec ------------------------------------
+-- A ticket number nobody types: HT-<n>, from a sequence. (ticket_number, the
+-- free-text column, stays for the number printed on a paper ticket.)
+create sequence if not exists public.work_order_ticket_seq start 1000;
+grant usage, select on sequence public.work_order_ticket_seq to authenticated;
+alter table public.work_orders add column if not exists ticket_no bigint default nextval('public.work_order_ticket_seq');
+-- Paper copy: the driver ran a paper ticket and photographed it instead of
+-- tapping times. The photos sit in ticket_photo_path / short_ticket_path,
+-- the paper's number in ticket_number, its tons in tonnage; hours and loads
+-- are typed here because there are no stamps or load lines to add up.
+alter table public.work_orders add column if not exists paper       boolean not null default false;
+alter table public.work_orders add column if not exists paper_hours numeric(6,2);
+alter table public.work_orders add column if not exists paper_loads integer;
+-- The daily safety check: { at, all_ok, items: { key: bool }, note }.
+alter table public.work_orders add column if not exists safety jsonb;
+-- An hourly job can carry a minimum: a short day bills at least this many
+-- hours. Set on the order (the column is added with job_orders, further
+-- down); copied to the ticket by the server.
+alter table public.work_orders add column if not exists min_hours numeric(6,2);
+-- When the "finish your haul ticket" reminder last went to the driver.
+alter table public.work_orders add column if not exists reminded_at timestamptz;
+-- Which of a load's four stamps were typed in rather than tapped, e.g.
+-- {load_in,unload_out}. A typed time has no GPS fix; the audit marks it.
+alter table public.work_order_loads add column if not exists typed_stamps text[];
+
 -- The photo of the scale ticket / BOL for this load (work-tickets bucket,
 -- under the driver's own "<uid>/bol/" folder). The scanner reads the ticket
 -- number and tons off it; the picture is the evidence either way.
@@ -2818,6 +2843,8 @@ alter table public.job_orders add column if not exists dropoff_address text;
 -- A flat fuel-surcharge figure on the order, put in front of whoever audits a
 -- ticket so they check it against the invoice without digging.
 alter table public.job_orders add column if not exists fuel_surcharge numeric(12,2);
+-- Minimum hours an hourly job bills per ticket, however short the day.
+alter table public.job_orders add column if not exists min_hours numeric(6,2);
 
 -- Haulers no longer read the order book: it carries the customer's rate. The
 -- load they were dispatched already carries everything they need to do the

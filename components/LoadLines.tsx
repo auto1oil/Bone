@@ -32,6 +32,8 @@ type Props = {
   // The ticket's material, shown as the placeholder on each load so the
   // driver only types it when a load carried something else.
   defaultMaterial?: string;
+  // The ticket's day (YYYY-MM-DD): typed times land on it.
+  jobDate?: string;
 };
 
 const GPS_TIMEOUT_MS = 8000;
@@ -86,7 +88,13 @@ function looksOffline(message: string): boolean {
   return /fetch|network|load failed|timed? ?out|connection|socket/i.test(message);
 }
 
-export default function LoadLines({ workOrderId, locked = false, onTotalsChange, defaultMaterial = '' }: Props) {
+const hhmm = (iso: string | null | undefined) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+export default function LoadLines({ workOrderId, locked = false, onTotalsChange, defaultMaterial = '', jobDate = '' }: Props) {
   const supabase = createClient();
   const [loads, setLoads] = useState<WorkOrderLoad[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,9 +133,12 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange,
     // Look the row up fresh: a queued stamp may be for a load another
     // stamp created in the meantime.
     const { data: rows, error: readErr } = await supabase
-      .from('work_order_loads').select('id').eq('work_order_id', workOrderId).eq('load_no', loadNo).limit(1);
+      .from('work_order_loads').select('id, typed_stamps').eq('work_order_id', workOrderId).eq('load_no', loadNo).limit(1);
     if (readErr) return readErr.message;
-    const existingId = (rows as { id: string }[] | null)?.[0]?.id;
+    const found = (rows as { id: string; typed_stamps: string[] | null }[] | null)?.[0];
+    const existingId = found?.id;
+    // A tap on a stamp that had been typed makes it a tapped one again.
+    if (found?.typed_stamps?.includes(key)) patch.typed_stamps = found.typed_stamps.filter((k) => k !== key);
     const { error: err } = existingId
       ? await supabase.from('work_order_loads').update(patch).eq('id', existingId)
       : await supabase.from('work_order_loads').insert({ work_order_id: workOrderId, load_no: loadNo, ...patch });
@@ -205,6 +216,7 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange,
       [`${key}_lat`]: null,
       [`${key}_lng`]: null,
       [`${key}_accuracy`]: null,
+      typed_stamps: (load.typed_stamps || []).filter((k) => k !== key),
     }).eq('id', load.id);
     setBusy('');
     if (err) { setError(err.message); return; }
@@ -224,6 +236,64 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange,
         .insert({ work_order_id: workOrderId, load_no: loadNo, [field]: val });
       refresh();
     }
+    pingTicketProgress(workOrderId);
+  }
+
+  // ---- Edit times ---------------------------------------------------------
+  // A missed tap or a fat thumb: the driver types the load's times instead.
+  // Typed times are marked (✎, and flagged for the audit), carry no GPS fix,
+  // must be in order, on the ticket's day — a late load may run past
+  // midnight into the next morning — and not in the future.
+  const [editing, setEditing] = useState<number | null>(null);
+  const [editVals, setEditVals] = useState<Record<string, string>>({});
+  const [editError, setEditError] = useState('');
+
+  function openEdit(loadNo: number, load?: WorkOrderLoad) {
+    setEditVals(Object.fromEntries(LOAD_STAMPS.map((st) => [st.key, hhmm(load?.[`${st.key}_at`] as string | null)])));
+    setEditError('');
+    setEditing(loadNo);
+  }
+
+  async function saveEdit(loadNo: number) {
+    const load = loads.find((l) => l.load_no === loadNo);
+    const firstExisting = load ? LOAD_STAMPS.map((st) => load[`${st.key}_at`] as string | null).find(Boolean) : null;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const localDay = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const base = jobDate || (firstExisting ? localDay(new Date(firstExisting)) : localDay(new Date()));
+    const patch: Record<string, unknown> = {};
+    const typed = new Set(load?.typed_stamps || []);
+    let prev: Date | null = null;
+    for (const st of LOAD_STAMPS) {
+      const v = editVals[st.key] || '';
+      const existing = (load?.[`${st.key}_at`] as string | null) || null;
+      if (!v) {
+        if (existing) {
+          Object.assign(patch, { [`${st.key}_at`]: null, [`${st.key}_lat`]: null, [`${st.key}_lng`]: null, [`${st.key}_accuracy`]: null });
+          typed.delete(st.key);
+        }
+        continue;
+      }
+      let d = new Date(`${base}T${v}:00`);
+      // Past midnight: an afternoon or evening stamp followed by a morning one.
+      if (prev && d < prev && prev.getHours() >= 12 && d.getHours() < 12) d = new Date(d.getTime() + 86_400_000);
+      if (prev && d < prev) { setEditError(`${st.label} can\u2019t be before the step ahead of it.`); return; }
+      if (d.getTime() > Date.now() + 60_000) { setEditError(`${st.label} is in the future.`); return; }
+      prev = d;
+      if (!existing || hhmm(existing) !== v) {
+        Object.assign(patch, { [`${st.key}_at`]: d.toISOString(), [`${st.key}_lat`]: null, [`${st.key}_lng`]: null, [`${st.key}_accuracy`]: null });
+        typed.add(st.key);
+      }
+    }
+    if (Object.keys(patch).length === 0) { setEditing(null); return; }
+    patch.typed_stamps = [...typed];
+    setBusy(`edit${loadNo}`);
+    const { error: err } = load
+      ? await supabase.from('work_order_loads').update(patch).eq('id', load.id)
+      : await supabase.from('work_order_loads').insert({ work_order_id: workOrderId, load_no: loadNo, ...patch });
+    setBusy('');
+    if (err) { setEditError(err.message); return; }
+    setEditing(null);
+    refresh();
     pingTicketProgress(workOrderId);
   }
 
@@ -371,6 +441,7 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange,
     const waiting = queued[pk];
     const shown = pending[pk] || saved || waiting;
     const hasFix = load ? load[`${key}_lat` as keyof WorkOrderLoad] != null : false;
+    const wasTyped = !!load?.typed_stamps?.includes(key);
     const working = busy === pk;
 
     if (waiting && !saved) {
@@ -401,7 +472,7 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange,
             {clockOf(shown)}
           </span>
           <span className="text-[10px] text-emerald-700">
-            {working ? 'saving…' : hasFix ? '📍 located' : pending[pk] ? 'locating…' : 'no fix'}
+            {working ? 'saving…' : wasTyped ? '✎ typed' : hasFix ? '📍 located' : pending[pk] ? 'locating…' : 'no fix'}
           </span>
         </button>
       );
@@ -444,6 +515,35 @@ export default function LoadLines({ workOrderId, locked = false, onTotalsChange,
         <div className="grid grid-cols-4 gap-1.5">
           {LOAD_STAMPS.map((s) => stampButton(loadNo, s.key, s.label, load))}
         </div>
+        {!locked && editing !== loadNo && (
+          <div className="text-right mt-1">
+            <button type="button" onClick={() => openEdit(loadNo, load)} className="text-xs text-brand-700 underline decoration-dotted underline-offset-2">
+              ✎ {load ? 'Edit times' : 'Type the times instead'}
+            </button>
+          </div>
+        )}
+        {editing === loadNo && (
+          <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2">
+            <div className="grid grid-cols-4 gap-1.5">
+              {LOAD_STAMPS.map((st) => (
+                <label key={st.key} className="block">
+                  <span className="block text-[10px] uppercase tracking-wide text-amber-900 mb-0.5">{st.label}</span>
+                  <input type="time" value={editVals[st.key] || ''} onChange={(e) => setEditVals((v) => ({ ...v, [st.key]: e.target.value }))}
+                    className="w-full px-1 py-1 border border-amber-300 rounded-md text-sm bg-white" />
+                </label>
+              ))}
+            </div>
+            <p className="text-[11px] text-amber-900 mt-1">Typed times are marked ✎ and the office sees them. Tapping is better when you can.</p>
+            {editError && <p className="text-xs text-red-700 mt-1">{editError}</p>}
+            <div className="flex gap-2 mt-2">
+              <button type="button" onClick={() => saveEdit(loadNo)} disabled={busy === `edit${loadNo}`}
+                className="px-3 py-1.5 text-xs rounded-md bg-brand-700 text-white font-medium disabled:opacity-50">
+                {busy === `edit${loadNo}` ? 'Saving…' : 'Save times'}
+              </button>
+              <button type="button" onClick={() => setEditing(null)} className="px-3 py-1.5 text-xs rounded-md border border-gray-300 bg-white">Cancel</button>
+            </div>
+          </div>
+        )}
 
         {/* The inputs are uncontrolled so typing doesn't fight the refresh;
             the key remounts them when the saved value changes under them —

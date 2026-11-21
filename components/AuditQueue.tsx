@@ -9,6 +9,7 @@ import {
 import type { JobOrder } from '@/lib/job-orders';
 import PlaceCheckPanel from '@/components/PlaceCheckPanel';
 import type { PlaceCheck } from '@/lib/place-check';
+import { loadFlags } from '@/lib/ticket-rules';
 
 // What the verify panel reads off the ticket's order.
 type OrderFacts = Pick<JobOrder,
@@ -54,7 +55,7 @@ const COLUMNS: Column[] = [
   { key: 'rate', label: 'Rate', get: (w) => (w.rate == null ? '' : `$${Number(w.rate).toFixed(2)}`) },
   { key: 'bills', label: 'Bills', get: (w) => `${billableQuantity(w).toFixed(2)} ${billableUnit(w)}` },
   { key: 'amount', label: 'Amount', get: (w) => `$${ticketAmount(w).toFixed(2)}` },
-  { key: 'photo', label: 'Photo', get: (w) => (w.ticket_photo_path ? 'yes' : w.hauler_load_id ? 'n/a (dispatched)' : 'MISSING') },
+  { key: 'photo', label: 'Paper photo', get: (w) => (w.ticket_photo_path ? 'yes' : w.paper ? 'MISSING' : 'n/a (digital)') },
   { key: 'foreman', label: 'Foreman', get: (w) => (w.foreman_signature_path ? 'signed' : 'MISSING') },
   { key: 'place', label: 'Place check', get: (w) => {
     const c = w.place_check as PlaceCheck | null;
@@ -69,15 +70,20 @@ const DEFAULT_KEYS = ['job_date', 'driver_name', 'trucking_company', 'unit_numbe
   'loads_count', 'loads_tons', 'total_hours', 'amount'];
 
 // Why a ticket can't be passed without someone looking. Null means it can.
-function needsEyes(w: WorkOrder): string | null {
+function needsEyes(w: WorkOrder, flags: string[] = []): string | null {
   if (w.order_mismatch && !w.mismatch_cleared_at) return w.order_mismatch;
   if (!w.order_id) return 'no order — nothing to check it against';
-  // A ticket started from a dispatched load IS the ticket — there is no paper
-  // to photograph. Only a hand-filed ticket is expected to carry one.
-  if (!w.ticket_photo_path && !w.hauler_load_id) return 'no photo of the paper ticket';
-  // The foreman signing is what closes the day on site. Without it there is
-  // nobody on the customer's side who agreed to these hours.
-  if (!w.foreman_signature_path) return 'the job foreman never signed it';
+  // A digital ticket IS the ticket — there is no paper to photograph. Only a
+  // paper copy is expected to carry the photo; it is all there is to go on.
+  if (w.paper && !w.ticket_photo_path && !w.short_ticket_path) return 'paper copy with no photo of the paper ticket';
+  // The loads: a missing time, a missing BOL photo, or a time that was typed
+  // rather than tapped (no GPS behind it).
+  if (!w.paper && flags.length) return flags.length === 1 ? flags[0] : `${flags[0]} (+${flags.length - 1} more on the loads)`;
+  // The foreman signing is what closes the day on site. A driver can finish
+  // without it — the foreman may have left — but then nobody on the
+  // customer's side agreed to these hours, and the office should know. A
+  // paper copy carries the signature on the paper.
+  if (!w.paper && !w.foreman_signature_path) return 'the job foreman never signed it';
   if (ticketAmount(w) <= 0) return 'nothing to bill — no hours, no tonnage, or no rate';
   // Where the truck was. A stamp away from the job's pit or site, or a day
   // with no GPS at all, is a reason to look — never a quiet pass.
@@ -102,6 +108,9 @@ export default function AuditQueue() {
   const [orderFacts, setOrderFacts] = useState<Record<string, OrderFacts>>({});
   const [bizNames, setBizNames] = useState<Record<string, string>>({});
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  // What the loads on each ticket need looked at (missing times, missing
+  // BOL photos, typed times), keyed by ticket.
+  const [loadIssues, setLoadIssues] = useState<Record<string, string[]>>({});
 
   const refresh = useCallback(async () => {
     const [{ data: tickets }, { data: setting }] = await Promise.all([
@@ -111,6 +120,17 @@ export default function AuditQueue() {
     ]);
     const list = (tickets as WorkOrder[]) || [];
     setRows(list);
+    if (list.length > 0) {
+      const { data: loadRows } = await supabase.from('work_order_loads')
+        .select('work_order_id, load_no, load_in_at, load_out_at, unload_in_at, unload_out_at, tons, bol_photo_path, typed_stamps')
+        .in('work_order_id', list.map((w) => w.id));
+      type L = Parameters<typeof loadFlags>[0][number] & { work_order_id: string };
+      const byTicket: Record<string, L[]> = {};
+      for (const l of (loadRows as L[]) || []) (byTicket[l.work_order_id] ||= []).push(l);
+      setLoadIssues(Object.fromEntries(Object.entries(byTicket).map(([k, v]) => [k, loadFlags(v)])));
+    } else {
+      setLoadIssues({});
+    }
     const saved = (setting as { value: string } | null)?.value;
     if (saved) setKeys(saved.split(',').map((k) => k.trim()).filter(Boolean));
 
@@ -234,10 +254,16 @@ export default function AuditQueue() {
         : (w.hauler_id && w.rate != null ? `$${Number(w.rate).toFixed(2)}/${per}` : '—')],
       ['Fuel surcharge', o?.fuel_surcharge != null ? `$${Number(o.fuel_surcharge).toFixed(2)}` : '—'],
     ];
-    const reason = needsEyes(w);
+    const reason = needsEyes(w, loadIssues[w.id]);
     return (
       <div className="rounded-md border border-gray-200 bg-gray-50 p-3 mt-2">
         {reason && <p className="text-xs text-red-700 font-medium mb-2">{reason}</p>}
+        {!w.paper && (loadIssues[w.id]?.length || 0) > 1 && (
+          <ul className="text-xs text-red-700 mb-2 list-disc pl-4">
+            {loadIssues[w.id].map((f) => <li key={f}>{f}</li>)}
+          </ul>
+        )}
+        {w.paper && <p className="text-xs text-gray-600 mb-2">Paper copy: the hours, loads and tons were typed off the paper ticket. Check them against the photo.</p>}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Left: what was agreed, to verify against. */}
           <dl className="text-sm space-y-1.5">
@@ -295,10 +321,10 @@ export default function AuditQueue() {
                 <img src={photoUrl} alt="Paper ticket" className="mt-2 max-h-64 w-auto rounded border border-gray-200" />
               ) : w.ticket_photo_path ? (
                 <p className="mt-2 text-xs text-gray-400">Loading the paper-ticket photo…</p>
-              ) : w.hauler_load_id ? (
-                <p className="mt-2 text-xs text-gray-500">Started from a dispatched load — the app is the ticket, no paper to photograph.</p>
+              ) : !w.paper ? (
+                <p className="mt-2 text-xs text-gray-500">Digital ticket: the stamps and BOL photos are the record. Open the ticket PDF to see every BOL.</p>
               ) : (
-                <p className="mt-2 text-xs text-red-600">No photo of the paper ticket.</p>
+                <p className="mt-2 text-xs text-red-600">Paper copy with no photo of the paper ticket.</p>
               )}
             </div>
             <div className="mt-2">
@@ -317,8 +343,8 @@ export default function AuditQueue() {
   }
 
   const shown = COLUMNS.filter((c) => keys.includes(c.key));
-  const flagged = rows.filter((w) => needsEyes(w) !== null);
-  const clean = rows.filter((w) => needsEyes(w) === null);
+  const flagged = rows.filter((w) => needsEyes(w, loadIssues[w.id]) !== null);
+  const clean = rows.filter((w) => needsEyes(w, loadIssues[w.id]) === null);
   const cleanTotal = clean.reduce((n, w) => n + ticketAmount(w), 0);
   const selectedTotal = clean
     .filter((w) => selected.has(w.id))
@@ -416,7 +442,7 @@ export default function AuditQueue() {
                     </span>
                     <span className="text-sm font-semibold shrink-0">${ticketAmount(w).toFixed(2)}</span>
                   </div>
-                  <p className="text-xs text-red-700 font-medium mt-1">{needsEyes(w)}</p>
+                  <p className="text-xs text-red-700 font-medium mt-1">{needsEyes(w, loadIssues[w.id])}</p>
                   <div className="text-xs text-gray-600 mt-1">
                     {shown.map((c) => `${c.label} ${c.get(w) || '—'}`).join(' · ')}
                   </div>

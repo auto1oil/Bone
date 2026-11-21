@@ -43,16 +43,51 @@ Check in this order and report which one it was:
 - `lib/truck-types.ts` — the TYPE OF TRUCK list from the Bone paper pad and
   the 28-load-line limit (two columns of fourteen).
 - `lib/ticket-pdf.ts` — the haul ticket PDF, laid out to mirror the Bone pad.
-- The ticket form (`components/WorkOrderForm.tsx`) has two layouts. Crews
-  (driver, mechanic, labor, hauler side) always get the **driver view**: the
-  head prefilled (name, truck from `fleet_vehicles` assignment or last
-  ticket, the job from the last ticket's order or the only open one), start
-  and stop taken from the stamps (first Load in, last Unload out, via
-  `stampSpan`), BOL per load by photo (`ScanButton` kind `bol` →
-  `work_order_loads.bol_photo_path`, ticket number and net tons), down time
-  and extra time typed, the foreman's signature, Finish day. Office and admin
-  get the full form with a toggle. On a crew submit the PATCH route re-derives
-  start/stop from the loads, so posted times can't disagree with the stamps.
+- The haul ticket follows the dispatch spec: one driver's day on one job,
+  on one ticket. `components/WorkOrderForm.tsx` has two layouts. Crews
+  (driver, mechanic, labor, hauler side) always get the **driver view**;
+  office and admin get the full form with a toggle.
+  - **Start now, pick the job later.** A ticket can be started, stamped and
+    photographed with no job. The job picker (top of the ticket, amber when
+    blank) lists orders running on the ticket's day (`runsOn`), refreshes when
+    the driver returns to the app, and saves at once. The job is required to
+    finish. Once a ticket is in, only the office moves it to another job.
+  - **The server owns the job's facts** (`lib/ticket-rules.ts`): on a Bone
+    crew ticket the job number, addresses, rate, rate unit, travel and
+    minimum hours are written from the order (`jobFacts`), never from the
+    request, and the pick is checked (`jobPickProblem`: open, date in range).
+  - **One open ticket a day**: a Bone crew POST that finds their draft for
+    that date returns it instead of making another.
+  - **Loads**: four taps each (time saved at once, GPS after), a BOL photo
+    per load (`ScanButton` kind `bol` reads ticket number and net tons),
+    Undo by tapping a stamp, **Edit times** to type them (marked ✎ in
+    `work_order_loads.typed_stamps`, in order, no GPS).
+  - **Paper copy** (`work_orders.paper`): photos of the paper ticket
+    (`ticket_photo_path`, `short_ticket_path`) plus typed totals
+    (`ticket_number`, `paper_hours`, `paper_loads`, `tonnage`) instead of
+    stamps. Offered on the Start screen and while no load is stamped.
+  - **Finish day** is refused (`finishProblem`, client and PATCH route)
+    unless: a job is picked; at least one load with a Load in and an Unload
+    out, or on paper one photo; every load has its BOL photo. The foreman's
+    signature is optional to finish; the audit flags a ticket without one.
+    On a crew submit the route re-derives start/stop from the loads.
+  - **Hours**: `truckHours` (first Load in → last Unload out, or the paper's
+    typed hours) − down time + travel + extra (`totalHours`); an hourly job
+    bills at least the order's `min_hours` (`billableHours`).
+  - **Ticket number**: `work_orders.ticket_no` from a sequence, shown as
+    `HT-<n>` (`ticketLabel`). `ticket_number` is the paper pad's own number.
+  - **PDF**: the ticket page, then the BOL photos six to a page captioned
+    "Load N – Ticket #…" (or the paper photos, one a page).
+  - **Audit** (`components/AuditQueue.tsx`): `loadFlags` marks loads missing
+    a time or a BOL photo, and typed times.
+  - **Reminders** (`lib/ticket-reminders.ts`): `/api/cron/ticket-reminders`
+    runs hourly; 6–11 PM yard time (America/Denver) every started open
+    ticket gets a push, and at 6 AM the ones left overnight. The office's
+    "Remind now" is `/api/work-orders/[id]/remind`. `FinishTicketReminder`
+    is the full-screen prompt in the crew layouts.
+  - **Orders stay open until the office closes them** — the owner's
+    exception to the spec. Nothing auto-completes an order; don't add it.
+  - Safety check: `work_orders.safety` (`SAFETY_ITEMS`), one tap for all OK.
 - Dispatch to Bone's own drivers: the order page's "Send to Bone drivers"
   (`components/AssignDrivers.tsx`) posts to `/api/job-orders/[id]/assign`,
   office/admin only, which makes one draft ticket per driver from the order
@@ -67,7 +102,7 @@ Check in this order and report which one it was:
 - Travel vs waiting: `travel_hours` is the office's number per job (order →
   ticket); a crew member can't change it on a ticket that has an order (both
   work-order routes enforce it). The driver's waiting time is `extra_hours`.
-  `totalHours` = on site + travel + down + extra.
+  `totalHours` = truck hours − down + travel + extra.
 - Live progress to the funding app: `sendTicketProgress` in `lib/factoring.ts`
   posts an in-progress preview of a ticket to `{base}/progress` — only for a
   hauler whose link is `linked`, only while the ticket is open, only when
@@ -144,8 +179,10 @@ Each rule is enforced server-side (route check and/or RLS), never only in UI:
 
 ## Money is recomputed, never trusted
 
-Hours come from `start_at`/`stop_at` plus travel and down time; the amount is
-that (or tonnage, on a tonnage job) × the ticket's rate. The client shows the
+Hours come from `start_at`/`stop_at` (or a paper copy's typed hours), less down
+time, plus travel and time waited, with the job's minimum on an hourly job;
+the amount is that (or tonnage, loads, or the day) × the ticket's rate. On a
+Bone crew ticket the rate itself is written from the order by the server. The client shows the
 math live, but `lib/work-orders.ts` recomputes it server-side before invoicing.
 Don't add a code path that bills a number posted from the browser.
 

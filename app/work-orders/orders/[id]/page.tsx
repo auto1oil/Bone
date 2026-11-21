@@ -9,7 +9,7 @@ import {
   ORDER_STATUS_LABEL, ORDER_STATUS_TONE, orderSpan, type JobOrder,
 } from '@/lib/job-orders';
 import {
-  STATUS_LABEL, STATUS_TONE, ticketAmount, totalHours,
+  STATUS_LABEL, STATUS_TONE, ticketAmount, totalHours, ticketLabel,
   type WorkOrder, type WorkOrderStatus,
 } from '@/lib/work-orders';
 
@@ -34,6 +34,17 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
       setIsAdmin(me?.role === 'admin' || me?.role === 'master_admin');
     })();
   }, [supabase]);
+
+  // The office's "Remind now": the driver gets the finish-your-ticket nudge.
+  const [reminded, setReminded] = useState('');
+  async function remind(t: WorkOrder) {
+    setBusy(`r${t.id}`); setError('');
+    const res = await fetch(`/api/work-orders/${t.id}/remind`, { method: 'POST' });
+    const json = await res.json().catch(() => ({ ok: false, error: 'Network error' }));
+    setBusy('');
+    if (!json.ok) { setError(json.error || 'Could not send the reminder.'); return; }
+    setReminded(t.id);
+  }
 
   // An admin taking back a job a driver hasn't started.
   async function takeBack(t: WorkOrder) {
@@ -114,6 +125,7 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
     ['Daily hours', order.start_time && order.stop_time ? `${order.start_time} – ${order.stop_time}` : null],
     ['Rate', order.rate != null ? `$${Number(order.rate).toFixed(2)}/${order.rate_unit || 'hr'}` : null],
     ['Travel', order.travel_hours != null ? `${Number(order.travel_hours).toFixed(2)} hrs` : null],
+    ['Minimum', order.min_hours != null ? `${Number(order.min_hours).toFixed(2)} hrs per ticket` : null],
     ['Down time', order.down_hours != null ? `${Number(order.down_hours).toFixed(2)} hrs` : null],
     ['Tonnage', order.tonnage != null ? `${Number(order.tonnage).toFixed(2)} ${order.tonnage_type || ''}`.trim() : null],
     ['Equipment', order.equipment_type],
@@ -202,7 +214,7 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
                   <div className="flex justify-between items-start gap-3 flex-wrap">
                     <div className="min-w-0">
                       <Link href={`/work-orders/${t.id}`} className="font-medium text-sm hover:text-brand-700">
-                        {t.job_date || 'Ticket'}
+                        {ticketLabel(t)} · {t.job_date || 'no date'}{t.paper ? ' · paper' : ''}
                         {t.unit_number ? ` · Unit ${t.unit_number}` : ''}
                         {t.driver_name ? ` · ${t.driver_name}` : ''}
                         {t.report_time ? ` · start ${new Date(`2000-01-01T${t.report_time.slice(0, 5)}:00`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
@@ -232,6 +244,13 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
                         <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_TONE[t.status as WorkOrderStatus]}`}>
                           {STATUS_LABEL[t.status as WorkOrderStatus]}
                         </span>
+                      )}
+                      {/* A started ticket still on the driver's phone: nudge them. */}
+                      {(t.status === 'draft' || t.status === 'rejected') && (t.loads_count > 0 || t.paper) && (
+                        <button onClick={() => remind(t)} disabled={busy === `r${t.id}`}
+                          className="text-xs text-brand-700 hover:underline disabled:opacity-50">
+                          {busy === `r${t.id}` ? '…' : reminded === t.id ? 'Reminded ✓' : 'Remind now'}
+                        </button>
                       )}
                       {isAdmin && t.status === 'draft' && t.assigned_to && !(t.loads_count > 0) && (
                         <button onClick={() => takeBack(t)} disabled={busy === t.id}

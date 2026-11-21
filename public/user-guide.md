@@ -158,8 +158,12 @@ Orders tab, then Create order, top right.
   customer rate; their drivers' tickets carry only the pay rate.
 - **Per**: hour, ton, load or day. This decides how tickets bill. Tonnage on
   an hourly order is information, not a bill.
-- FSR, fuel surcharge, travel hours, down time, tonnage and type, equipment
-  type, unit, status, notes.
+- **Travel time for this job** is added to every driver's hours on it.
+  **Minimum hours per ticket** makes a short day on an hourly job bill at
+  least that many hours.
+- FSR, fuel surcharge, tonnage and type, equipment type, unit, status, notes.
+- **An order stays open until you close it.** Change its status to Complete
+  when the job is done; nothing closes it for you.
 
 Open an order later to edit it or to clear flags (below). The order page
 lists every ticket filed against it. **Copy** on an order starts a new one
@@ -210,13 +214,29 @@ Tickets tab. The bell shows how many are waiting.
 
 - **Approve** sub-tab is the audit queue. Tickets the server has already
   checked sit in a table: filed against an order, matching its rate, phase,
-  job and dates, with a photo and something to bill. Tick them and press
-  Approve & invoice to pass them in one go; the running total is on the
-  button. Anything the check can't vouch for sits above the table with the
-  reason: disagrees with its order, no order, no photo, nothing to bill. Tap
-  one to open the verify panel, which shows what was agreed beside what was
-  turned in and the photo of the paper ticket. Choose fields picks which of
-  the columns the whole office sees.
+  job and dates, every load timed and carrying its BOL photo, signed, with
+  something to bill. Tick them and press Approve & invoice to pass them in
+  one go; the running total is on the button. Anything the check can't vouch
+  for sits above the table with the reason: disagrees with its order, a load
+  missing a time or a BOL photo, a time that was typed instead of tapped, no
+  foreman signature, a paper copy with no photo, nothing to bill. Tap one to
+  open the verify panel, which shows what was agreed beside what was turned
+  in. A **paper copy** shows the photo of the paper ticket there; check the
+  typed hours, loads and tons against it. Choose fields picks which of the
+  columns the whole office sees.
+- **The ticket PDF** is the ticket page followed by every BOL photo, six to a
+  page, each captioned with its load and ticket number. It rides on the
+  invoice.
+- **Hours** are the truck's time from the first Load in to the last Unload
+  out, less down time, plus the job's travel and any time the driver waited.
+  On an hourly job with a minimum, a short day bills the minimum.
+- **Wrong job on a ticket?** Open it in the full form and pick the right
+  order. The ticket takes the new job's rate, addresses and travel. A ticket
+  already invoiced can't be moved.
+- **A ticket still on a driver's phone** shows on its order as Running. Tap
+  **Remind now** there and the driver gets the "Finish your haul ticket"
+  reminder straight away. They also get it on their own every hour from 6 to
+  11 PM, and at 6 the next morning.
 - **Place check.** Every load stamp carries the phone's GPS fix, and the app
   measures each one against the job's load address (the pit) and unload
   address (the site) from the order. A stamp more than about half a mile
@@ -266,46 +286,72 @@ plus deliveries and hours. Mechanics have the same screens.
 
 ### Fill out a haul ticket
 
-The ticket fills itself in. You tap stamps, photograph BOLs, and get the
-foreman to sign. That's the whole day.
+One ticket is your day on one job. You tap times as you work, photograph each
+load's BOL, and tap Finish day. Each ticket has its own number, HT and a
+number, that nobody types.
 
 **When the office sends you a job**, your phone buzzes and the job is at the
 top of your home screen marked **New job from the office**, with your start
-time, already filled in. To get the buzz, turn on **Phone notifications**
-once under Settings (the gear, top right) and allow them when the phone asks. Tap **Start** and go straight to step 3.
+time, already filled in. Tap **Start** and go straight to step 3. To get the
+buzz, turn on **Phone notifications** once under Settings (the gear, top
+right) and allow them when the phone asks.
 
-1. Tap **New Ticket**. The head of the ticket is already filled: your name,
-   your truck, plate and truck type (from your fleet assignment or your last
-   ticket), today's date, and the job. The job is the order your last ticket
-   was on, if it's still open, or the only open one; otherwise pick it from
-   **Job (order)** at the top and the customer, job number, pit, job address
-   and material fill in. Pit and job address are map links.
-2. Tap **Start the day**. The load lines open up.
-3. **Stamp each load with one tap.** Each load has four buttons: Load in,
-   Load out, Unload in, Unload out. Tapping records the time that instant and
-   attaches your GPS position a moment later, so you still get an accurate
-   time in a pit with no signal. Tap a stamped time to clear it.
-4. **The floating button** appears after your first Load in, pre-armed with
-   whichever stamp comes next, so the whole day is the same thumb on the same
+1. Tap **New Ticket**. Your name, truck, plate and truck type are already
+   there, from your fleet assignment or your last ticket. If you already have
+   a ticket open for today, you get that one back instead of a second one.
+2. **The job** is at the top. It's filled in when you're still on yesterday's
+   job, or when only one job is open today. Otherwise pick it. Picking saves
+   at once and brings in the customer, job number, pit, job address, material
+   and the job's travel time.
+   **No job in the list yet? Start anyway.** Tap **Start the day**, stamp
+   your loads and take your BOL photos. The box stays amber until a job is
+   picked. When the office adds the job it shows up the next time you come
+   back to the app, and nothing you've tapped is lost. The job has to be
+   picked before you can finish.
+3. **Daily safety check.** Tap **All OK** if everything is right. If
+   something isn't, tap Items, untick it, and say what's wrong.
+4. **Stamp each load with one tap**: Load in when you arrive at the pit, Load
+   out when you leave loaded, Unload in when you arrive at the job, Unload
+   out when you leave empty. The time saves the instant you tap; your GPS
+   position is attached a moment later, so a slow fix never loses a time.
+5. **The floating button** appears after your first Load in, armed with
+   whichever step comes next, so the whole day is the same thumb on the same
    spot. Hold and drag it to park it anywhere; the phone remembers.
-5. **BOL by photo.** On each load tap **BOL** and photograph the scale
-   ticket. The ticket number and net tons fill in, and the photo stays on
-   the load as the proof. Check the numbers. Material is only typed when a
-   load carried something other than the job's material.
-6. **Start and End set themselves.** Start is your first Load in. End is
-   your last Unload out. You never type a time. Clear a stamp and the time
-   moves with it.
-7. **Down time** (breakdown, stuck) and **Extra time** (waited at the pit or
-   the job) are the two numbers you type, in hours, with a note on what
-   happened. **Travel** is set by the office for each job and shows under
-   them. Total hours shows as you go.
-8. Hand the phone to the **job foreman**: they type their name and sign. The
-   day can't be finished without it.
-9. Tap **Finish day**. It goes to the office. **Ticket PDF** makes the
-   paper-style ticket to text or email to anyone.
+6. **BOL by photo.** On each load tap **BOL** and photograph the scale
+   ticket. The ticket number and net tons fill in, and the photo stays on the
+   load. Check the numbers. **Every load needs its BOL photo** before you can
+   finish.
+7. **A mistake?** Tap a stamped time to undo it. Or tap **Edit times** on the
+   load and type them in. Typed times are marked with a pencil and the office
+   sees them, they have to be in order, and they can't be in the future. A
+   late load can run past midnight.
+8. **Start and End set themselves**: your first Load in and your last Unload
+   out.
+9. **Down time** is time the truck wasn't working (breakdown, stuck); it
+   comes off your hours. **Extra time** is time you waited at the pit or the
+   job; it's added. **Travel** is set by the office for the job and shows
+   under them. Add a note on what happened.
+10. The **job foreman** signs on your phone if they're there. If they've
+    left you can still finish; the office sees it wasn't signed.
+11. Tap **Finish day**. It won't go until a job is picked, at least one load
+    has a Load in and an Unload out, and every load has its BOL photo. It
+    tells you which one is missing. **Ticket PDF** gives you the ticket with
+    every BOL photo behind it, to text or email.
 
-The office can open the same ticket in the full form if something needs
-fixing by hand: a time, the rate, the signed-out state, a paper ticket photo.
+**Paper ticket instead.** If you ran a paper ticket that day, tap **Running a
+paper ticket today? Upload a photo of it instead**, on the start screen or
+before you've stamped a load. Photograph the paper ticket, front and back if
+it has one, and type its number, hours, loads and tons. Pick the job, then
+Finish day. You can switch back to the digital ticket any time before you
+finish.
+
+**Still open tonight?** While a started ticket is open you get a "Finish your
+haul ticket" reminder every hour from 6 to 11 PM, and at 6 the next morning.
+Opening the app in the evening shows it full screen. Finish the ticket and it
+stops.
+
+Once a ticket is in, you can't move it to a different job. If it's on the
+wrong one, tell the office and they move it.
 
 ### My Tickets
 
@@ -502,18 +548,23 @@ job: fill the haul ticket for the load the company put them on.
    first tap a floating button follows you with whichever stamp comes next.
 5. **BOL by photo.** Tap **BOL** on the load and photograph the scale
    ticket; the ticket number and net tons fill in and the photo stays on the
-   load. Check the numbers.
+   load. Check the numbers. Every load needs its BOL photo before you can
+   finish. Missed a tap? **Edit times** on the load lets you type them; the
+   office sees which ones were typed.
 6. **Start and End set themselves**: first Load in, last Unload out. The only
-   numbers you type are **Down time** (breakdown, stuck) and **Extra time**
-   (waited), in hours, with a note. Travel comes with the job.
+   numbers you type are **Down time** (breakdown or stuck; it comes off your
+   hours) and **Extra time** (waited; it's added), with a note. Travel comes
+   with the job. Ran a paper ticket? Use **Upload a photo of it instead** and
+   type its totals.
 7. **Pay method.** If your company's Auto 1 Funding link is active you'll see
    two choices: Standard Pay, which waits on Bone's pay run, and Factor
    Payment, which has Auto 1 Funding pay it. Picking Factor Payment opens a
    bill of sale from Auto 1 Funding: tap Open & sign, type your name over
    there, and come back. A green strip shows who signed and when. Without the
    link you only see Standard Pay.
-8. **Signature.** The job foreman types their name and signs on your phone.
-   The ticket can't be finished without the foreman.
+8. **Signature.** The job foreman types their name and signs on your phone
+   if they're there. You can finish without it; the office sees it wasn't
+   signed.
 9. Tap **Finish day**. A Factor Payment ticket also needs the signed bill of
    sale first; if Auto 1 Funding can't be reached, completion still goes
    through. **Ticket PDF** makes the PDF to send to anyone.

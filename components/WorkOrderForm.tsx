@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { TRUCK_TYPES } from '@/lib/truck-types';
 import { pingTicketProgress } from '@/lib/progress-ping';
 import MapLink from '@/components/MapLink';
@@ -14,9 +14,18 @@ import HaulerOnTicket from '@/components/HaulerOnTicket';
 import { BRAND } from '@/lib/brand';
 import { orderLabel, ticketDefaultsFrom, type JobOrder } from '@/lib/job-orders';
 import {
-  onSiteHours, totalHours, ticketAmount, billableUnit, billableQuantity,
-  type WorkOrder,
+  onSiteHours, totalHours, ticketAmount, billableUnit, billableQuantity, ticketLabel, SAFETY_ITEMS,
+  type WorkOrder, type SafetyCheck,
 } from '@/lib/work-orders';
+import { runsOn } from '@/lib/ticket-rules';
+
+// Today on the phone's own calendar — not UTC's, which is already tomorrow
+// by late afternoon in Utah.
+function localToday(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 // Which layout office and admin see; crews always get the driver view.
 const VIEW_PREF_KEY = 'bone-ticket-view';
@@ -49,7 +58,8 @@ function toDraft(wo: Partial<WorkOrder> | null): Draft {
   const v = (x: unknown) => (x === null || x === undefined ? '' : String(x));
   return {
     order_id: v(wo?.order_id),
-    customer_id: v(wo?.customer_id),
+    // The form's "customer" is the business the ticket bills.
+    customer_id: v(wo?.business_id ?? wo?.customer_id),
     customer_number: v(wo?.customer_number),
     job_number: v(wo?.job_number),
     job_name: v(wo?.job_name),
@@ -72,12 +82,14 @@ function toDraft(wo: Partial<WorkOrder> | null): Draft {
     unit_number: v(wo?.unit_number),
     equipment_type: v(wo?.equipment_type),
     fsr: v(wo?.fsr),
-    job_date: v(wo?.job_date) || new Date().toISOString().slice(0, 10),
+    job_date: v(wo?.job_date) || localToday(),
     start_at: toLocalInput(wo?.start_at ?? null),
     stop_at: toLocalInput(wo?.stop_at ?? null),
     travel_hours: v(wo?.travel_hours),
     down_hours: v(wo?.down_hours),
     extra_hours: v(wo?.extra_hours),
+    paper_hours: v(wo?.paper_hours),
+    paper_loads: v(wo?.paper_loads),
     report_time: v(wo?.report_time).slice(0, 5),
     rate: v(wo?.rate),
     rate_unit: v(wo?.rate_unit),
@@ -237,6 +249,14 @@ export default function WorkOrderForm({
   // extra time, the foreman's signature — and nothing else to type. Office
   // and admin get the full form, with a switch to see what the driver sees.
   const [me, setMe] = useState<{ id: string; role: string; full_name: string | null; hauler_id: string | null } | null>(null);
+  // Paper copy: the driver ran a paper ticket and photographs it instead of
+  // tapping times.
+  const [paper, setPaper] = useState<boolean>(!!workOrder?.paper);
+  // The daily safety check.
+  const [safety, setSafety] = useState<SafetyCheck | null>(workOrder?.safety ?? null);
+  const [showSafety, setShowSafety] = useState(false);
+  const [safetyDraft, setSafetyDraft] = useState<Record<string, boolean>>(workOrder?.safety?.items ?? {});
+  const [safetyNote, setSafetyNote] = useState(workOrder?.safety?.note ?? '');
   const [viewPref, setViewPref] = useState<'driver' | 'full'>('full');
   const isCrew = !!me && (CREW_ROLES.includes(me.role) || !!me.hauler_id);
   const driverView = !!me && (isCrew ? true : viewPref === 'driver');
@@ -345,8 +365,10 @@ export default function WorkOrderForm({
             }
             return next;
           });
-          const lastOrder = last?.order_id ? openOrders.find((o) => o.id === last.order_id) : undefined;
-          const pickOrder = lastOrder ? lastOrder.id : openOrders.length === 1 ? openOrders[0].id : '';
+          const today = localToday();
+          const running = openOrders.filter((o) => runsOn(o, today));
+          const lastOrder = last?.order_id ? running.find((o) => o.id === last.order_id) : undefined;
+          const pickOrder = lastOrder ? lastOrder.id : running.length === 1 ? running[0].id : '';
           if (pickOrder && !haulerSide) applyOrder(pickOrder, openOrders, haulerSide);
         }
       }
@@ -359,14 +381,28 @@ export default function WorkOrderForm({
   // at the end of the day; clearing a stamp moves the time with it. (The
   // server does the same on submit, so a posted time can't disagree.)
   useEffect(() => {
-    if (!driverView || locked || !id) return;
+    if (!driverView || locked || !id || paper) return;
     const start = toLocalInput(loadTotals.firstIn);
     const stop = toLocalInput(loadTotals.lastOut);
     setDraft((d) => (d.start_at === start && d.stop_at === stop && d.driver_start_at === start && d.driver_end_at === stop
       ? d
       : { ...d, start_at: start, stop_at: stop, driver_start_at: start, driver_end_at: stop }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [driverView, locked, id, loadTotals.firstIn, loadTotals.lastOut]);
+  }, [driverView, locked, id, paper, loadTotals.firstIn, loadTotals.lastOut]);
+
+  // The job list refreshes whenever the driver comes back to the app: a job
+  // the office created after the day started shows up without a reload.
+  const loadOrders = useCallback(async () => {
+    const { data } = await supabase.from('job_orders').select('*').in('status', ['open', 'active'])
+      .order('order_number', { ascending: false });
+    if (data) setOrders(data as JobOrder[]);
+  }, [supabase]);
+  useEffect(() => {
+    const again = () => { if (document.visibilityState === 'visible') loadOrders(); };
+    window.addEventListener('focus', again);
+    document.addEventListener('visibilitychange', again);
+    return () => { window.removeEventListener('focus', again); document.removeEventListener('visibilitychange', again); };
+  }, [loadOrders]);
 
   function setView(v: 'driver' | 'full') {
     setViewPref(v);
@@ -390,6 +426,11 @@ export default function WorkOrderForm({
     travel_hours: Number(draft.travel_hours) || 0,
     down_hours: Number(draft.down_hours) || 0,
     extra_hours: Number(draft.extra_hours) || 0,
+    paper,
+    paper_hours: Number(draft.paper_hours) || 0,
+    paper_loads: Number(draft.paper_loads) || 0,
+    // The job's minimum: off the picked order, else what the ticket carries.
+    min_hours: Number(orders.find((o) => o.id === draft.order_id)?.min_hours ?? workOrder?.min_hours ?? 0) || 0,
     rate: Number(draft.rate) || 0,
     rate_unit: draft.rate_unit || null,
     tonnage: Number(draft.tonnage) || 0,
@@ -436,6 +477,10 @@ export default function WorkOrderForm({
       down_hours: draft.down_hours === '' ? null : Number(draft.down_hours),
       extra_hours: draft.extra_hours === '' ? null : Number(draft.extra_hours),
       report_time: draft.report_time || null,
+      paper,
+      paper_hours: draft.paper_hours === '' ? null : Number(draft.paper_hours),
+      paper_loads: draft.paper_loads === '' ? null : Number(draft.paper_loads),
+      safety,
       rate: draft.rate === '' ? null : Number(draft.rate),
       rate_unit: draft.rate_unit || null,
       tonnage: draft.tonnage === '' ? null : Number(draft.tonnage),
@@ -547,27 +592,100 @@ export default function WorkOrderForm({
     }
   }
 
-  async function save(submit: boolean) {
-    if (submit) {
-      if (!draft.job_number.trim()) { setError(driverView ? 'Pick the job at the top before finishing.' : 'Enter the job number before completing the ticket.'); return; }
-      if (!draft.start_at || !draft.stop_at) {
-        setError(driverView
-          ? 'The day needs at least one load with a Load in and an Unload out stamped — those set the start and end.'
-          : 'Enter the start and stop times before completing the ticket.');
+  // ---- Things that save the moment they happen --------------------------
+  // The job pick, the safety check, a paper photo: none of them should wait
+  // on the driver remembering to tap Save.
+  async function quickSave(partial: Record<string, unknown>) {
+    if (!id || locked) return;
+    try {
+      const res = await fetch(`/api/work-orders/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(partial),
+      });
+      const json = await res.json();
+      if (json.ok) onSaved?.(json.work_order as WorkOrder);
+      else setError(json.error || 'Could not save that.');
+    } catch { /* it rides along on the next save */ }
+  }
+
+  // Pick or change the job. It saves at once; the server checks the job is
+  // open and running that day, and writes the job's facts onto the ticket.
+  // Nothing already tapped is lost — times, loads and photos live on the
+  // ticket, not the job.
+  async function pickJob(orderId: string) {
+    const picked = orders.find((o) => o.id === orderId) || null;
+    const before = draft;
+    const v = (x: unknown) => (x === null || x === undefined ? '' : String(x));
+    setDraft({
+      ...draft,
+      order_id: orderId,
+      customer_id: v(picked?.business_id), customer_number: v(picked?.customer_number),
+      job_number: v(picked?.job_number), job_name: v(picked?.job_name), job_address: v(picked?.job_address),
+      supplier: v(picked?.pickup_address), phase_code: v(picked?.phase_code), fsr: v(picked?.fsr),
+      rate: v(picked?.rate), rate_unit: v(picked?.rate_unit), travel_hours: v(picked?.travel_hours),
+      material: draft.material || v(picked?.tonnage_type),
+    });
+    setError(''); setMsg('');
+    if (!id) return;
+    setBusy('job');
+    try {
+      const res = await fetch(`/api/work-orders/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...body(), order_id: orderId || null }),
+      });
+      const json = await res.json();
+      if (!json.ok) { setDraft(before); setError(json.error || 'Could not put the ticket on that job.'); return; }
+      onSaved?.(json.work_order as WorkOrder);
+      setMsg(orderId ? 'Job saved on the ticket.' : 'Job taken off the ticket.');
+    } catch {
+      setDraft(before);
+      setError('Network error — the job didn\u2019t save. Try again when you have signal.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  function switchPaper(on: boolean) {
+    setPaper(on);
+    quickSave({ paper: on });
+  }
+
+  function saveSafety(items: Record<string, boolean>, note: string) {
+    const check: SafetyCheck = {
+      at: new Date().toISOString(),
+      all_ok: Object.values(items).every(Boolean),
+      items,
+      note: note.trim() || null,
+    };
+    setSafety(check); setSafetyDraft(items); setSafetyNote(note);
+    quickSave({ safety: check });
+  }
+
+  async function save(submit: boolean, extra: Record<string, unknown> = {}) {
+    const isPaper = extra.paper === true || paper;
+    if (submit && driverView) {
+      // Finish day: a job, and either the stamps or the paper's photo. The
+      // server checks the rest (a BOL photo on every load) against the loads.
+      const hasJob = isHauler ? !!(draft.order_id || draft.job_number.trim()) : !!draft.order_id;
+      if (!hasJob) { setError('Pick the job this ticket is for first — it\u2019s at the top of the ticket.'); return; }
+      if (isPaper) {
+        if (!ticketPhoto && !shortTicket) { setError('Add a photo of the paper ticket before finishing.'); return; }
+      } else if (!draft.start_at || !draft.stop_at) {
+        setError('The day needs at least one load with a Load in and an Unload out stamped — those set the start and end.');
         return;
       }
-      // A driver's ticket is the stamps and the BOL photos; there is no paper
-      // ticket to photograph.
-      if (!driverView && !ticketPhoto) { setError('Attach a photo of the paper ticket before completing it.'); return; }
+    } else if (submit) {
+      if (!draft.job_number.trim()) { setError('Enter the job number before completing the ticket.'); return; }
+      if (!isPaper && (!draft.start_at || !draft.stop_at)) { setError('Enter the start and stop times before completing the ticket.'); return; }
+      if (!ticketPhoto) { setError('Attach a photo of the paper ticket before completing it.'); return; }
       if (!foremanSignature) { setError('The job foreman needs to sign the ticket before it goes in.'); return; }
-      if (!foremanSigner.name) { setError('The foreman’s typed name is missing — clear their signature and have them sign again with their name.'); return; }
+      if (!foremanSigner.name) { setError('The foreman\u2019s typed name is missing — clear their signature and have them sign again with their name.'); return; }
     }
     setBusy(submit ? 'submit' : 'save'); setError(''); setMsg('');
     try {
       const res = await fetch(id ? `/api/work-orders/${id}` : '/api/work-orders', {
         method: id ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...body(), submit }),
+        body: JSON.stringify({ ...body(), ...extra, submit }),
       });
       const json = await res.json();
       if (!json.ok) {
@@ -579,7 +697,10 @@ export default function WorkOrderForm({
         setError(json.error || 'Could not save the ticket.');
         return;
       }
-      setMsg(submit ? 'Completed — it\u2019s with the office now.' : driverView && !id ? 'Day started — stamp Load in at the pit.' : 'Saved.');
+      setMsg(submit ? 'Completed — it\u2019s with the office now.'
+        : json.existing ? 'You already have today\u2019s ticket open — here it is.'
+        : driverView && !id ? (isPaper ? 'Paper ticket started — add the photo.' : 'Day started — stamp Load in at the pit.')
+        : 'Saved.');
       pingTicketProgress(json.work_order?.id);
       onSaved?.(json.work_order as WorkOrder);
       if (!id) router.replace(`/tickets/${json.work_order.id}`);
@@ -781,11 +902,12 @@ export default function WorkOrderForm({
   );
 
   // ---- The driver view ---------------------------------------------------
-  // The paper pad as the driver sees it: the head of the ticket already
-  // filled from the job, the driver and the truck already known, start and
-  // end set by the first Load in and the last Unload out. What's left to
-  // touch is the loads (one tap per stamp, a photo per BOL), down and extra
-  // time, and the foreman's signature.
+  // One driver's day on one job, on one ticket. Start now, pick the job
+  // later: the times, loads and photos live on the ticket, so nothing waits
+  // on the office. The head fills itself from the job once it's picked;
+  // start and end come off the first Load in and the last Unload out. What
+  // the driver touches is the stamps, a BOL photo per load, down and extra
+  // time — or, on a paper day, photos of the paper ticket and its totals.
   const clock = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '');
   const weekday = draft.job_date ? new Date(`${draft.job_date}T12:00:00`).toLocaleDateString([], { weekday: 'short' }).toUpperCase() : '';
   const customerName = customers.find((c) => c.id === draft.customer_id)?.name || '';
@@ -795,7 +917,12 @@ export default function WorkOrderForm({
   const headRow = (k: string, v: React.ReactNode) => (v ? (
     <div className="grid grid-cols-[6.5rem_1fr] gap-2 py-0.5"><span className="text-gray-500">{k}</span><span className="text-gray-900">{v}</span></div>
   ) : null);
-  const ro = `${input} bg-gray-50`;
+  // Jobs running on the ticket's day, plus whichever one is already on it.
+  const jobChoices = orders.filter((o) => o.id === draft.order_id || runsOn(o, draft.job_date));
+  // The job is the driver's to pick until the ticket is in; then the office moves it.
+  const jobLocked = locked || (isCrew && !(status === 'draft' || status === 'rejected'));
+  const safetyDone = !!safety?.at;
+  const safetyBad = safety ? SAFETY_ITEMS.filter((it) => safety.items?.[it.key] === false) : [];
 
   if (driverView) return (
     <div className="space-y-4">
@@ -809,8 +936,8 @@ export default function WorkOrderForm({
             <div className="text-[11px] text-gray-500">{BRAND.legalName} · {BRAND.addressLines.join(', ')} · {BRAND.phone}</div>
           </div>
           <div className="text-right">
-            <div className="text-[10px] uppercase tracking-wide text-gray-500">Haul ticket</div>
-            <div className="text-xl font-bold text-accent-400 tabular-nums">{draft.ticket_number || (id ? id.slice(0, 6).toUpperCase() : 'New')}</div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-500">Haul ticket{paper ? ' · paper copy' : ''}</div>
+            <div className="text-xl font-bold text-accent-400 tabular-nums">{workOrder ? ticketLabel(workOrder) : 'New'}</div>
           </div>
         </div>
 
@@ -826,16 +953,27 @@ export default function WorkOrderForm({
           {isHauler ? (
             <p className="text-xs text-gray-600 mb-2">
               {draft.order_id
-                ? 'This ticket is against the job Bone sent you. The job came with it; your loads, times and signature are what you fill in.'
+                ? 'This ticket is against the job Bone sent you. The job came with it; your loads, times and photos are what you fill in.'
                 : 'Start from the load Bone sent you and the job fills itself in, or fill the job in below.'}
             </p>
           ) : (
             <label className="block mb-2">
               <span className={label}>Job (order)</span>
-              <select value={draft.order_id} onChange={(e) => applyOrder(e.target.value)} disabled={locked} className={`${input} font-medium`}>
-                <option value="">— Pick the job —</option>
-                {orders.map((o) => <option key={o.id} value={o.id}>{orderLabel(o)}</option>)}
+              <select value={draft.order_id} onChange={(e) => pickJob(e.target.value)} disabled={jobLocked || busy === 'job'}
+                className={`${input} font-medium ${draft.order_id ? '' : 'border-amber-400 bg-amber-50 text-amber-900'}`}>
+                <option value="">{jobChoices.length ? 'Pick the job you’re hauling on…' : 'No jobs open today — ask the office'}</option>
+                {jobChoices.map((o) => <option key={o.id} value={o.id}>{orderLabel(o)}</option>)}
               </select>
+              {!draft.order_id && !jobLocked && (
+                <span className="block mt-1 text-[11px] text-amber-800">
+                  {jobChoices.length
+                    ? 'You can start and stamp loads now and pick the job later. It has to be picked before you finish.'
+                    : 'Keep working: stamp your loads and take your BOL photos. When the office adds the job it shows up here.'}
+                </span>
+              )}
+              {jobLocked && !locked && isCrew && (
+                <span className="block mt-1 text-[11px] text-gray-500">Wrong job? The office moves it.</span>
+              )}
             </label>
           )}
           {headRow('Customer', customerName || draft.customer_number)}
@@ -847,7 +985,7 @@ export default function WorkOrderForm({
             <span className="text-gray-500">Material</span>
             <input value={draft.material} onChange={(e) => set('material', e.target.value)} disabled={locked} placeholder="What's being hauled" className={input} />
           </div>
-          {!draft.order_id && !locked && (
+          {isHauler && !draft.order_id && !locked && (
             <div className="grid grid-cols-2 gap-2 mt-2">
               <label><span className={label}>Job #</span><input value={draft.job_number} onChange={(e) => set('job_number', e.target.value)} className={input} /></label>
               <label><span className={label}>Job name</span><input value={draft.job_name} onChange={(e) => set('job_name', e.target.value)} className={input} /></label>
@@ -881,56 +1019,150 @@ export default function WorkOrderForm({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 mt-3">
-          <div className={`rounded-lg border px-3 py-2 ${preview.start_at ? 'border-emerald-200 bg-emerald-50' : 'border-dashed border-gray-300'}`}>
-            <div className="text-[10px] uppercase tracking-wide text-gray-500">Start</div>
-            <div className="text-lg font-bold tabular-nums">{preview.start_at ? clock(preview.start_at) : <span className="text-sm font-normal text-gray-500">first Load in</span>}</div>
-            <div className="text-[10px] text-gray-500">set by the first Load in</div>
+        {!paper && (
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <div className={`rounded-lg border px-3 py-2 ${preview.start_at ? 'border-emerald-200 bg-emerald-50' : 'border-dashed border-gray-300'}`}>
+              <div className="text-[10px] uppercase tracking-wide text-gray-500">Start</div>
+              <div className="text-lg font-bold tabular-nums">{preview.start_at ? clock(preview.start_at) : <span className="text-sm font-normal text-gray-500">first Load in</span>}</div>
+              <div className="text-[10px] text-gray-500">set by the first Load in</div>
+            </div>
+            <div className={`rounded-lg border px-3 py-2 ${preview.stop_at ? 'border-emerald-200 bg-emerald-50' : 'border-dashed border-gray-300'}`}>
+              <div className="text-[10px] uppercase tracking-wide text-gray-500">End</div>
+              <div className="text-lg font-bold tabular-nums">{preview.stop_at ? clock(preview.stop_at) : <span className="text-sm font-normal text-gray-500">last Unload out</span>}</div>
+              <div className="text-[10px] text-gray-500">set by the last Unload out</div>
+            </div>
           </div>
-          <div className={`rounded-lg border px-3 py-2 ${preview.stop_at ? 'border-emerald-200 bg-emerald-50' : 'border-dashed border-gray-300'}`}>
-            <div className="text-[10px] uppercase tracking-wide text-gray-500">End</div>
-            <div className="text-lg font-bold tabular-nums">{preview.stop_at ? clock(preview.stop_at) : <span className="text-sm font-normal text-gray-500">last Unload out</span>}</div>
-            <div className="text-[10px] text-gray-500">set by the last Unload out</div>
-          </div>
-        </div>
+        )}
       </div>
 
-      {id ? (
-        <LoadLines workOrderId={id} locked={locked} onTotalsChange={setLoadTotals} defaultMaterial={draft.material} />
-      ) : (
+      {/* The daily safety check: one tap when everything's right, the list when it isn't. */}
+      {id && (
+        <div className={`bg-white border rounded-lg px-4 py-3 text-sm ${safetyDone ? (safetyBad.length ? 'border-red-300' : 'border-gray-200') : 'border-amber-300'}`}>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span>
+              <strong>Daily safety check</strong>{' '}
+              {safetyDone
+                ? safetyBad.length
+                  ? <span className="text-red-700">{safetyBad.length} {safetyBad.length === 1 ? 'problem' : 'problems'} · {clock(safety!.at)}</span>
+                  : <span className="text-emerald-700">✓ all OK · {clock(safety!.at)}</span>
+                : <span className="text-amber-800">not done yet</span>}
+            </span>
+            <span className="flex items-center gap-3">
+              {!safetyDone && !locked && (
+                <button type="button" onClick={() => saveSafety(Object.fromEntries(SAFETY_ITEMS.map((it) => [it.key, true])), '')}
+                  className="px-3 py-1.5 text-xs rounded-md bg-emerald-600 text-white font-medium">All OK</button>
+              )}
+              <button type="button" onClick={() => setShowSafety((v) => !v)} className="text-xs text-brand-700 underline decoration-dotted underline-offset-2">{showSafety ? 'Hide' : 'Items'}</button>
+            </span>
+          </div>
+          {showSafety && (
+            <div className="mt-2">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                {SAFETY_ITEMS.map((it) => (
+                  <label key={it.key} className="flex items-center gap-2">
+                    <input type="checkbox" className="h-4 w-4" disabled={locked}
+                      checked={safetyDraft[it.key] !== false}
+                      onChange={(e) => setSafetyDraft((d) => ({ ...d, [it.key]: e.target.checked }))} />
+                    <span className={safetyDraft[it.key] === false ? 'text-red-700 font-medium' : ''}>{it.label}</span>
+                  </label>
+                ))}
+              </div>
+              <input value={safetyNote} onChange={(e) => setSafetyNote(e.target.value)} disabled={locked}
+                placeholder="Untick what's wrong and say what it is" className={`${input} mt-2`} />
+              {!locked && (
+                <button type="button" onClick={() => { saveSafety(Object.fromEntries(SAFETY_ITEMS.map((it) => [it.key, safetyDraft[it.key] !== false])), safetyNote); setShowSafety(false); }}
+                  className="mt-2 px-3 py-1.5 text-xs rounded-md bg-brand-700 text-white font-medium">Save check</button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!id ? (
         <div className="bg-white border-2 border-dashed border-brand-700 rounded-xl p-4 text-center">
           <p className="text-sm text-gray-700 mb-3">
-            {draft.job_number ? 'Job’s picked, truck’s on. Start the day and the load lines open up: one tap at the pit, one at the site.' : 'Pick the job at the top, then start the day.'}
+            {draft.order_id || draft.job_number
+              ? 'Job’s picked, truck’s on. Start the day and the load lines open up: one tap at the pit, one at the site.'
+              : 'No job yet? Start anyway. Stamp your loads and pick the job when the office has it up.'}
           </p>
-          <button onClick={() => save(false)} disabled={!!busy || !draft.job_number}
+          <button onClick={() => save(false)} disabled={!!busy}
             className="px-6 py-3 text-base bg-brand-700 text-white rounded-lg hover:bg-brand-900 disabled:opacity-50 font-semibold">
             {busy === 'save' ? 'Starting…' : 'Start the day'}
           </button>
+          <div className="mt-3">
+            <button type="button" onClick={() => save(false, { paper: true })} disabled={!!busy}
+              className="text-sm text-brand-700 underline decoration-dotted underline-offset-2 disabled:opacity-50">
+              Running a paper ticket today? Upload a photo of it instead
+            </button>
+          </div>
         </div>
+      ) : paper ? (
+        <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+          <div className="flex items-baseline justify-between gap-2 flex-wrap">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Paper ticket</h2>
+            {!locked && (
+              <button type="button" onClick={() => switchPaper(false)} className="text-xs text-brand-700 underline decoration-dotted underline-offset-2">
+                Use the digital ticket instead
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-gray-600">Photograph the paper ticket, front and back if it has one, then type its totals. The photos ride on the invoice.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <TicketAttachment label="Paper ticket photo" hint="The whole ticket, flat and readable."
+              path={ticketPhoto} onChange={(p) => { setTicketPhoto(p); quickSave({ ticket_photo_path: p }); }} readOnly={locked} />
+            <TicketAttachment label="Second page or back" hint="Only if there is one."
+              path={shortTicket} onChange={(p) => { setShortTicket(p); quickSave({ short_ticket_path: p }); }} readOnly={locked} />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <label><span className={label}>Paper ticket #</span>
+              <input value={draft.ticket_number} onChange={(e) => set('ticket_number', e.target.value)} disabled={locked} className={input} />
+            </label>
+            <label><span className={label}>Hours</span>
+              <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.paper_hours} onChange={(e) => set('paper_hours', e.target.value)} disabled={locked} className={input} />
+            </label>
+            <label><span className={label}>Loads</span>
+              <input type="number" step="1" min="0" inputMode="numeric" value={draft.paper_loads} onChange={(e) => set('paper_loads', e.target.value)} disabled={locked} className={input} />
+            </label>
+            <label><span className={label}>Tons</span>
+              <input type="number" step="0.01" min="0" inputMode="decimal" value={draft.tonnage} onChange={(e) => set('tonnage', e.target.value)} disabled={locked} className={input} />
+            </label>
+          </div>
+        </div>
+      ) : (
+        <>
+          <LoadLines workOrderId={id} locked={locked} onTotalsChange={setLoadTotals} defaultMaterial={draft.material} jobDate={draft.job_date} />
+          {!locked && loadTotals.loads === 0 && (
+            <p className="text-center -mt-2">
+              <button type="button" onClick={() => switchPaper(true)} className="text-sm text-brand-700 underline decoration-dotted underline-offset-2">
+                Running a paper ticket today? Upload a photo of it instead
+              </button>
+            </p>
+          )}
+        </>
       )}
 
       {id && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 text-sm space-y-2">
-          <div className="flex justify-between"><span className="text-gray-500">Total loads</span><span className="font-semibold tabular-nums">{loadTotals.loads} · {loadTotals.tons.toFixed(1)} tons</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Truck hours</span><span className="font-semibold tabular-nums">{onSiteHours(preview.start_at, preview.stop_at).toFixed(1)}{preview.start_at ? ` (${clock(preview.start_at)} – ${preview.stop_at ? clock(preview.stop_at) : '…'})` : ''}</span></div>
+          {!paper && (
+            <>
+              <div className="flex justify-between"><span className="text-gray-500">Total loads</span><span className="font-semibold tabular-nums">{loadTotals.loads} · {loadTotals.tons.toFixed(1)} tons</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Truck hours</span><span className="font-semibold tabular-nums">{onSiteHours(preview.start_at, preview.stop_at).toFixed(1)}{preview.start_at ? ` (${clock(preview.start_at)} – ${preview.stop_at ? clock(preview.stop_at) : '…'})` : ''}</span></div>
+            </>
+          )}
           <div className="grid grid-cols-[1fr_5.5rem] gap-2 items-center">
-            <div><div className="text-gray-700">Down time (h)</div><div className="text-[11px] text-gray-500">breakdown, stuck, time the truck wasn&apos;t working</div></div>
+            <div><div className="text-gray-700">Down time (h)</div><div className="text-[11px] text-gray-500">breakdown, stuck: time the truck wasn&apos;t working, taken off the hours</div></div>
             <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.down_hours} onChange={(e) => set('down_hours', e.target.value)} disabled={locked} placeholder="0" className={`${input} text-right`} />
           </div>
           <div className="grid grid-cols-[1fr_5.5rem] gap-2 items-center">
-            <div><div className="text-gray-700">Extra time (h)</div><div className="text-[11px] text-gray-500">waited at the pit or the job, detours</div></div>
+            <div><div className="text-gray-700">Extra time (h)</div><div className="text-[11px] text-gray-500">waited at the pit or the job, detours: added</div></div>
             <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.extra_hours} onChange={(e) => set('extra_hours', e.target.value)} disabled={locked} placeholder="0" className={`${input} text-right`} />
           </div>
-          {draft.order_id ? (
-            <div className="flex justify-between"><span className="text-gray-500">Travel (set by the office)</span><span className="tabular-nums">{draft.travel_hours ? `${Number(draft.travel_hours).toFixed(2)} h` : 'none'}</span></div>
-          ) : (
-            <div className="grid grid-cols-[1fr_5.5rem] gap-2 items-center">
-              <div><div className="text-gray-700">Travel (h)</div><div className="text-[11px] text-gray-500">no job picked, so add it here</div></div>
-              <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.travel_hours} onChange={(e) => set('travel_hours', e.target.value)} disabled={locked} placeholder="0" className={`${input} text-right`} />
-            </div>
-          )}
+          <div className="flex justify-between"><span className="text-gray-500">Travel (set by the office)</span><span className="tabular-nums">{draft.travel_hours ? `${Number(draft.travel_hours).toFixed(2)} h` : draft.order_id ? 'none' : 'comes with the job'}</span></div>
           <div className="flex justify-between pt-2 border-t border-gray-100"><span className="text-gray-500">Total hours</span><span className="font-semibold tabular-nums">{hours.toFixed(1)}</span></div>
-          {loadTotals.lastOut && <div className="flex justify-between"><span className="text-gray-500">Last load unloaded</span><span className="tabular-nums">{clock(loadTotals.lastOut)}</span></div>}
+          {preview.min_hours > 0 && preview.rate_unit === 'hour' && hours < preview.min_hours && (
+            <div className="flex justify-between"><span className="text-gray-500">Job minimum</span><span className="tabular-nums">{preview.min_hours.toFixed(1)} h billed</span></div>
+          )}
+          {!paper && loadTotals.lastOut && <div className="flex justify-between"><span className="text-gray-500">Last load unloaded</span><span className="tabular-nums">{clock(loadTotals.lastOut)}</span></div>}
           {isHauler && (preview.rate > 0) && (
             <div className="flex justify-between pt-2 border-t border-gray-100"><span className="text-gray-500">Pays</span><span className="font-semibold tabular-nums">{billableQuantity(preview, previewLoads).toFixed(2)} {unit} = ${amount.toFixed(2)}</span></div>
           )}
@@ -945,7 +1177,7 @@ export default function WorkOrderForm({
 
       {paymentBlock}
 
-      {id && (
+      {id && !paper && (
         <TicketSignature
           path={foremanSignature}
           signerName={foremanSigner.name}
@@ -954,13 +1186,13 @@ export default function WorkOrderForm({
           onSigned={(name, at) => setForemanSigner({ name, at })}
           readOnly={locked}
           label="Job foreman signs"
-          hint="Hand them the phone: they type their name and sign. The day can't be finished without it."
+          hint="Hand them the phone: they type their name and sign. If they've left, you can still finish; the office sees it wasn't signed."
         />
       )}
 
-      {id && foremanSignature && foremanSigner.name && (
+      {id && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 flex items-center justify-between gap-3 flex-wrap">
-          <span className="text-sm text-gray-700">Signed by <strong>{foremanSigner.name}</strong>.</span>
+          <span className="text-sm text-gray-700">{foremanSignature && foremanSigner.name ? <>Signed by <strong>{foremanSigner.name}</strong>.</> : 'The ticket as a PDF, with the BOL photos behind it.'}</span>
           <button type="button" onClick={shareTicket} disabled={busy === 'share'} className="px-4 py-2 text-sm rounded-md border border-brand-700 text-brand-700 font-medium hover:bg-brand-50 disabled:opacity-50">
             {busy === 'share' ? 'Building the PDF…' : 'Ticket PDF — view / share'}
           </button>
@@ -1152,6 +1384,20 @@ export default function WorkOrderForm({
           <label><span className={label}>Start time (sent to the driver)</span>
             <input type="time" value={draft.report_time} onChange={(e) => set('report_time', e.target.value)} disabled={locked} className={input} />
           </label>
+          <label className="col-span-2 flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" className="h-4 w-4" checked={paper} onChange={(e) => setPaper(e.target.checked)} disabled={locked} />
+            Paper copy: hours and loads are typed off the paper ticket, not taken from stamps
+          </label>
+          {paper && (
+            <>
+              <label><span className={label}>Paper hours</span>
+                <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.paper_hours} onChange={(e) => set('paper_hours', e.target.value)} disabled={locked} className={input} />
+              </label>
+              <label><span className={label}>Paper loads</span>
+                <input type="number" step="1" min="0" inputMode="numeric" value={draft.paper_loads} onChange={(e) => set('paper_loads', e.target.value)} disabled={locked} className={input} />
+              </label>
+            </>
+          )}
           <label><span className={label}>Tonnage</span>
             <input type="number" step="0.01" min="0" inputMode="decimal" value={draft.tonnage} onChange={(e) => set('tonnage', e.target.value)} disabled={locked} className={input} />
             {(draft.rate_unit === 'hour' || draft.rate_unit === 'day') && (

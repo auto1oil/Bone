@@ -8,6 +8,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
 import NavBar from '@/components/NavBar';
+import FinishTicketReminder from '@/components/FinishTicketReminder';
 import FeatureGuard from '@/components/FeatureGuard';
 import { navGroupForRole, type Role } from '@/lib/feature-catalog';
 
@@ -38,6 +39,7 @@ export default async function HaulerLayout({ children }: { children: React.React
     return (
       <div className="min-h-screen bg-gray-50">
         <NavBar role={profile.role as Role} email={profile.email} />
+        <FinishTicketReminder />
         <main className="max-w-5xl mx-auto px-4 py-6">
           <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
             <h1 className="text-lg font-semibold mb-2">Your login isn&apos;t linked to a company yet</h1>

@@ -10,6 +10,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { pickEditable, ORDER_LOCKED_FIELDS, stampSpan } from '@/lib/work-orders';
+import { loadOrder, jobPickProblem, jobFacts, noJobFacts, finishProblem, JOB_FACT_FIELDS } from '@/lib/ticket-rules';
 import { withOrderMismatch } from '@/lib/order-match';
 import { requestBillOfSale, checkFactoringLink, sendTicketProgress } from '@/lib/factoring';
 import { runPlaceCheck } from '@/lib/place-check';
@@ -89,18 +90,70 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   // The form shows the same figures; this is the half that can't be edited.
   // The office keeps its hand on the times when it edits a ticket itself.
   const isOffice = !!actor && ['office', 'admin', 'master_admin'].includes(actor.role);
+  const bone = !isOffice && !actor?.hauler_id;   // Bone's own crew
+
   // Travel on a job is the office's number, set per job on the order. A
   // crew member's ticket against an order keeps it; their waiting time goes
   // in extra_hours instead.
   if (!isOffice && before?.order_id) delete patch.travel_hours;
-  if (body.submit === true && !isOffice) {
-    const { data: loads } = await supabase
-      .from('work_order_loads').select('load_in_at, unload_out_at').eq('work_order_id', params.id);
-    const { firstIn, lastOut } = stampSpan((loads as { load_in_at: string | null; unload_out_at: string | null }[]) || []);
-    if (firstIn && lastOut) {
+
+  // ---- The job on a Bone crew ticket ---------------------------------
+  // Start now, pick the job later: the job is free to pick or change while
+  // the ticket is still the driver's. Once it's in, only the office moves
+  // it. Whatever job it is, the job's facts and the rate are written from
+  // the order here, never taken from the request.
+  if (bone && before) {
+    const changing = 'order_id' in patch && (patch.order_id || null) !== (before.order_id || null);
+    if (changing && !['draft', 'rejected'].includes(before.status)) {
+      return NextResponse.json({ ok: false, error: 'This ticket is already in — the office moves it if it\u2019s the wrong job.' }, { status: 400 });
+    }
+    for (const k of JOB_FACT_FIELDS) delete patch[k];
+    if (changing) {
+      if (patch.order_id) {
+        const order = await loadOrder(createAdminClient(), patch.order_id as string);
+        const problem = jobPickProblem(order, (patch.job_date as string) || before.job_date);
+        if (problem) return NextResponse.json({ ok: false, error: problem }, { status: 400 });
+        Object.assign(patch, jobFacts(order!));
+      } else {
+        Object.assign(patch, noJobFacts());
+      }
+    }
+  }
+
+  // The office moving a ticket to a different job: it takes the new job's
+  // facts with it (a lessor's ticket takes that job's pay rate, not the
+  // customer's). Refused once the ticket is invoiced — the money is booked.
+  if (isOffice && before && 'order_id' in patch && patch.order_id && patch.order_id !== before.order_id) {
+    if (before.status === 'invoiced') {
+      return NextResponse.json({ ok: false, error: 'This ticket is already invoiced — it can\u2019t be moved to another job.' }, { status: 400 });
+    }
+    const order = await loadOrder(createAdminClient(), patch.order_id as string);
+    if (!order) return NextResponse.json({ ok: false, error: 'that order no longer exists' }, { status: 400 });
+    Object.assign(patch, jobFacts(order));
+    if (before.hauler_id) patch.rate = order.pay_rate;
+  }
+
+  if (body.submit === true && !isOffice && before) {
+    const { data: loadRows } = await supabase
+      .from('work_order_loads')
+      .select('load_no, load_in_at, load_out_at, unload_in_at, unload_out_at, tons, bol_photo_path')
+      .eq('work_order_id', params.id);
+    type L = Parameters<typeof finishProblem>[1][number];
+    const loads = (loadRows as L[]) || [];
+    // Finish is refused until the ticket is whole: a job, at least one load
+    // (or a photo of the paper), and a BOL photo on every load.
+    const problem = finishProblem({ ...before, ...patch } as never, loads, bone);
+    if (problem) return NextResponse.json({ ok: false, error: problem }, { status: 400 });
+    // A finished day is clocked by the stamps, not by what the browser
+    // posted: start is the first Load in, stop the last Unload out. A paper
+    // copy has no stamps; its hours are the typed total.
+    const paper = !!({ ...before, ...patch } as { paper?: boolean }).paper;
+    const { firstIn, lastOut } = stampSpan(loads);
+    if (!paper && firstIn && lastOut) {
       patch.start_at = firstIn; patch.stop_at = lastOut;
       patch.driver_start_at = firstIn; patch.driver_end_at = lastOut;
     }
+    if (paper) { patch.start_at = null; patch.stop_at = null; }
   }
 
   const finalPatch = await withOrderMismatch(supabase, patch, before);

@@ -50,6 +50,8 @@ export type JobOrder = {
   stop_time: string | null;
   travel_hours: number | null;
   down_hours: number | null;
+  // Minimum hours an hourly job bills per ticket, however short the day.
+  min_hours?: number | null;
   // What the CUSTOMER pays. Office only — haulers cannot read this table.
   rate: number | null;
   // What a hauler is paid on this job by default. Also office only.
@@ -74,12 +76,12 @@ export type JobOrder = {
 export const ORDER_EDITABLE_FIELDS = [
   'business_id', 'customer_number', 'job_name', 'job_number', 'phase_code',
   'job_address', 'pickup_address', 'dropoff_address', 'start_date', 'end_date', 'start_time', 'stop_time',
-  'travel_hours', 'down_hours', 'rate', 'pay_rate', 'rate_unit', 'fuel_surcharge',
+  'travel_hours', 'down_hours', 'min_hours', 'rate', 'pay_rate', 'rate_unit', 'fuel_surcharge',
   'fsr', 'tonnage', 'tonnage_type', 'equipment_type', 'unit_number', 'status', 'notes',
 ] as const;
 
 const ORDER_NUMERIC_FIELDS = new Set([
-  'travel_hours', 'down_hours', 'rate', 'pay_rate', 'fuel_surcharge', 'tonnage',
+  'travel_hours', 'down_hours', 'min_hours', 'rate', 'pay_rate', 'fuel_surcharge', 'tonnage',
 ]);
 
 export function pickOrderEditable(body: Record<string, unknown>): Record<string, unknown> {
@@ -148,7 +150,8 @@ export function ticketDefaultsFrom(o: JobOrder, forHauler = false): Record<strin
   put('equipment_type', o.equipment_type);
   put('unit_number', o.unit_number);
   put('travel_hours', o.travel_hours);
-  put('down_hours', o.down_hours);
+  // Down time is what happened to the truck on the day, taken off the
+  // hours — the driver's to enter, not an estimate to carry over.
   put('tonnage_type', o.tonnage_type);
   return out;
 }

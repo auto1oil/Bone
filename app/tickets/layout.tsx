@@ -8,6 +8,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
 import NavBar from '@/components/NavBar';
+import FinishTicketReminder from '@/components/FinishTicketReminder';
 import FeatureGuard from '@/components/FeatureGuard';
 import { navGroupForRole, type Role } from '@/lib/feature-catalog';
 
@@ -30,6 +31,7 @@ export default async function TicketsLayout({ children }: { children: React.Reac
   return (
     <div className="min-h-screen bg-gray-50">
       <NavBar role={profile.role as Role} email={profile.email} />
+      <FinishTicketReminder />
       {group && <FeatureGuard group={group} />}
       <main className="max-w-5xl mx-auto px-4 py-6">{children}</main>
     </div>

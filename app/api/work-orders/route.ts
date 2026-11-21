@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { pickEditable } from '@/lib/work-orders';
+import { loadOrder, jobPickProblem, jobFacts, noJobFacts, finishProblem } from '@/lib/ticket-rules';
 import { withOrderMismatch } from '@/lib/order-match';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { checkFactoringLink } from '@/lib/factoring';
@@ -87,10 +88,38 @@ export async function POST(req: Request) {
     if (link.status !== 'linked') row.payment_method = 'standard';
   }
 
-  // Travel on a job is the office's number, set per job on the order — a
-  // crew-filed ticket against an order takes it from there, whatever was
-  // posted. (Read with the service role: a hauler's people can't read orders.)
-  if (row.order_id && !['office', 'admin', 'master_admin'].includes(actor.role)) {
+  // ---- Bone's own crew (a lessor's crew gets its job through a load) ----
+  const isOffice = ['office', 'admin', 'master_admin'].includes(actor.role);
+  if (!isOffice && !actor.hauler_id) {
+    // One open ticket a day: a second tap on Start hands back the one
+    // that's already open (the office may have sent it) instead of making
+    // a duplicate.
+    const day = (row.job_date as string) || new Date().toISOString().slice(0, 10);
+    row.job_date = day;
+    if (!submit) {
+      const { data: open } = await supabase.from('work_orders').select('*')
+        .eq('submitted_by', user.id).eq('status', 'draft').eq('job_date', day)
+        .order('created_at', { ascending: false }).limit(1);
+      const existing = (open as Record<string, unknown>[] | null)?.[0];
+      if (existing) return NextResponse.json({ ok: true, work_order: existing, existing: true });
+    }
+    // The job is optional to start. When one is picked it has to be open and
+    // running that day, and its facts — the rate above all — come from the
+    // order, never from the request.
+    if (row.order_id) {
+      const order = await loadOrder(createAdminClient(), row.order_id as string);
+      const problem = jobPickProblem(order, day);
+      if (problem) return NextResponse.json({ ok: false, error: problem }, { status: 400 });
+      Object.assign(row, jobFacts(order!));
+    } else {
+      Object.assign(row, noJobFacts());
+    }
+    if (submit) {
+      const problem = finishProblem(row as never, [], true);
+      if (problem) return NextResponse.json({ ok: false, error: problem }, { status: 400 });
+    }
+  } else if (row.order_id && !isOffice) {
+    // A lessor's crew: travel is still the office's number for the job.
     const { data: ord } = await createAdminClient()
       .from('job_orders').select('travel_hours').eq('id', row.order_id as string).maybeSingle();
     row.travel_hours = (ord as { travel_hours: number | null } | null)?.travel_hours ?? null;

@@ -18,7 +18,7 @@ import { BRAND } from '@/lib/brand';
 import { TRUCK_TYPES, MAX_LOADS } from '@/lib/truck-types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
-  totalHours, onSiteHours, totalLoadTons, countLoads,
+  totalHours, truckHours, ticketLabel, totalLoadTons, countLoads,
   type WorkOrder, type WorkOrderLoad,
 } from '@/lib/work-orders';
 
@@ -139,9 +139,12 @@ export async function buildTicketPdf(
   centered(`${BRAND.contactName} - ${BRAND.phone}`.toUpperCase(), 712, 8, bold);
   centered(`EMAIL: ${BRAND.officeEmail}`.toUpperCase(), 702, 8, bold);
   // Ticket number, top right, as the pad numbers its sheets.
-  if (wo.ticket_number) {
-    const tn = String(wo.ticket_number);
+  // The ticket's own number (HT-n), and the paper pad's number beside it
+  // when the driver ran a paper ticket.
+  {
+    const tn = [ticketLabel(wo), wo.ticket_number ? `#${wo.ticket_number}` : null].filter(Boolean).join('  ·  ');
     text(tn, R - bold.widthOfTextAtSize(tn, 11) - 6, 738, 11, bold);
+    if (wo.paper) text('PAPER COPY', R - bold.widthOfTextAtSize('PAPER COPY', 7) - 6, 728, 7, bold);
   }
 
   // ---- Outer box ----
@@ -279,7 +282,8 @@ export async function buildTicketPdf(
   vline(totalsMid, totalsBottom, tableBottom, 1);
   hline(L, R, totalsBottom, 1);
   let ty = tableBottom - 17;
-  const onSite = onSiteHours(wo.start_at, wo.stop_at);
+  // Off the stamps on a digital ticket; the typed total on a paper copy.
+  const onSite = truckHours(wo);
   const span = wo.start_at || wo.stop_at ? `${fmtClock(wo.start_at)} – ${fmtClock(wo.stop_at)}` : '';
   const lastUnload = [...loads]
     .map((l) => l.unload_out_at || l.unload_in_at)
@@ -288,14 +292,15 @@ export async function buildTicketPdf(
     .pop() || wo.sign_out_at;
   // Tons hauled isn't a line on the pad, but it's what a tonnage job bills
   // from, so it rides beside the load count.
-  const tons = totalLoadTons(loads);
-  const loadsS = countLoads(loads) ? `${countLoads(loads)}${tons > 0 ? `     (${tons.toFixed(2)} tons)` : ''}` : '';
+  const tons = wo.paper ? Number(wo.tonnage || 0) : totalLoadTons(loads);
+  const loadCount = wo.paper ? Number(wo.paper_loads || 0) : countLoads(loads);
+  const loadsS = loadCount ? `${loadCount}${tons > 0 ? `     (${tons.toFixed(2)} tons)` : ''}` : (tons > 0 ? `(${tons.toFixed(2)} tons)` : '');
   fill('TOTAL LOADS', lx, totalsMid - 8, ty, loadsS, 9, 9); ty -= 16;
   fill('TRUCK HOURS', lx, totalsMid - 8, ty, onSite > 0 ? `${onSite.toFixed(2)}${span ? `   (${span})` : ''}` : span, 9, 9); ty -= 16;
   const travelS = [
     wo.travel_hours != null ? `${wo.travel_hours} hrs` : null,
     Number(wo.extra_hours || 0) > 0 ? `+ ${wo.extra_hours} hrs waited` : null,
-    Number(wo.down_hours || 0) > 0 ? `+ ${wo.down_hours} hrs down` : null,
+    Number(wo.down_hours || 0) > 0 ? `- ${wo.down_hours} hrs down` : null,
   ].filter(Boolean).join('   ');
   fill('TRAVEL TIME', lx, totalsMid - 8, ty, travelS, 9, 9); ty -= 16;
   fill('TOTAL HOURS', lx, totalsMid - 8, ty, totalHours(wo) > 0 ? totalHours(wo).toFixed(2) : '', 9, 9); ty -= 16;
@@ -353,7 +358,62 @@ export async function buildTicketPdf(
   // ---- Footer line, as printed on the pads ----
   centered('WHITE - BILLING      YELLOW - TRUCK COPY', boxBottom + 5, 7.5, bold);
 
+  // ---- Behind the ticket: the paper it was written on, or each load's BOL.
+  // A photo that can't be fetched or read is skipped — the ticket page is
+  // worth having on its own.
+  const label = ticketLabel(wo);
+  if (wo.paper) {
+    for (const [i, p] of [wo.ticket_photo_path, wo.short_ticket_path].entries()) {
+      if (!p) continue;
+      const img = await embedPhoto(db, doc, p);
+      if (!img) continue;
+      const pg = doc.addPage([612, 792]);
+      pg.drawText(`${label} · paper ticket${i ? ' (page 2)' : ''}`, { x: 36, y: 762, size: 9, font: bold, color: INK });
+      const sc = Math.min(540 / img.width, 710 / img.height);
+      pg.drawImage(img, { x: 36 + (540 - img.width * sc) / 2, y: 752 - img.height * sc, width: img.width * sc, height: img.height * sc });
+    }
+  } else {
+    // Six to a page, two across, each captioned with its load and BOL number.
+    const withBol = loads.filter((l) => l.bol_photo_path);
+    const cellW = 264; const cellH = 226; const gapX = 12; const top = 752;
+    let pg: PDFPage | null = null;
+    let slot = 0;
+    for (const l of withBol) {
+      const img = await embedPhoto(db, doc, l.bol_photo_path!);
+      if (!img) continue;
+      if (!pg || slot === 6) {
+        pg = doc.addPage([612, 792]);
+        pg.drawText(`${label} · BOL photos`, { x: 36, y: 766, size: 9, font: bold, color: INK });
+        slot = 0;
+      }
+      const col = slot % 2; const rowN = Math.floor(slot / 2);
+      const x0 = 36 + col * (cellW + gapX);
+      const yTop = top - rowN * (cellH + 14);
+      const cap = `Load ${l.load_no} – Ticket #${l.ticket_number || '—'}${l.tons != null ? `  ·  ${Number(l.tons).toFixed(2)} tons` : ''}`;
+      pg.drawText(cap, { x: x0, y: yTop - 9, size: 8, font: bold, color: INK });
+      const sc = Math.min(cellW / img.width, (cellH - 16) / img.height);
+      pg.drawImage(img, { x: x0, y: yTop - 14 - img.height * sc, width: img.width * sc, height: img.height * sc });
+      slot++;
+    }
+  }
+
   return doc.save();
+}
+
+// A photo from the ticket bucket, embedded by what its bytes say it is (the
+// phone may hand over a JPEG or a PNG whatever the file is called). Null for
+// anything else, or anything that won't fetch.
+async function embedPhoto(db: SupabaseClient, doc: PDFDocument, path: string): Promise<PDFImage | null> {
+  try {
+    const { data } = await db.storage.from(BUCKET).download(path);
+    if (!data) return null;
+    const bytes = new Uint8Array(await data.arrayBuffer());
+    if (bytes[0] === 0xff && bytes[1] === 0xd8) return await doc.embedJpg(bytes);
+    if (bytes[0] === 0x89 && bytes[1] === 0x50) return await doc.embedPng(bytes);
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 // A signature PNG drawn sitting on its fill-in line. Missing or unreadable

@@ -18,6 +18,7 @@ import { createClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { sendPushToUsers } from '@/lib/webpush';
 import { ticketDefaultsFrom, type JobOrder } from '@/lib/job-orders';
+import { jobFacts } from '@/lib/ticket-rules';
 import { withOrderMismatch } from '@/lib/order-match';
 
 export const runtime = 'nodejs';
@@ -130,8 +131,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     for (const [k, v] of Object.entries(defaults)) {
       // The form's "customer" is the business; the table's customer_id is a login.
       const key = k === 'customer_id' ? 'business_id' : k;
+      // Down time is what happened to the truck that day — the driver's to
+      // enter, not an estimate to carry over from the order.
+      if (key === 'down_hours') continue;
       row[key] = NUMERIC.has(key) ? Number(v) : v;
     }
+    Object.assign(row, jobFacts(order));
     Object.assign(row, {
       order_id: order.id,
       job_date: jobDate,

@@ -37,6 +37,7 @@ function toDraft(o: JobOrder | null): Draft {
     start_time: v(o?.start_time),
     stop_time: v(o?.stop_time),
     travel_hours: v(o?.travel_hours),
+    min_hours: v(o?.min_hours),
     down_hours: v(o?.down_hours),
     rate: v(o?.rate),
     pay_rate: v(o?.pay_rate),
@@ -96,6 +97,7 @@ export default function OrderForm({ order, template = null }: { order: JobOrder 
       start_time: txt(draft.start_time),
       stop_time: txt(draft.stop_time),
       travel_hours: num(draft.travel_hours),
+      min_hours: num(draft.min_hours),
       down_hours: num(draft.down_hours),
       rate: num(draft.rate),
       pay_rate: num(draft.pay_rate),
@@ -246,6 +248,13 @@ export default function OrderForm({ order, template = null }: { order: JobOrder 
               onChange={(e) => set('travel_hours', e.target.value)} className={input} />
             <span className="block mt-1 text-[11px] text-gray-500">
               Added to every driver&apos;s hours on this job. Drivers can&apos;t change it.
+            </span>
+          </label>
+          <label><span className={label}>Minimum hours per ticket</span>
+            <input type="number" step="0.25" min="0" inputMode="decimal" value={draft.min_hours}
+              onChange={(e) => set('min_hours', e.target.value)} className={input} />
+            <span className="block mt-1 text-[11px] text-gray-500">
+              Hourly jobs only: a short day still bills at least this many hours. Leave blank for none.
             </span>
           </label>
           <label><span className={label}>Down time (hrs)</span>

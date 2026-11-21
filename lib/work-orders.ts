@@ -3,9 +3,11 @@
 // invoice routine the office triggers on approval.
 // ============================================================================
 // A ticket's money is always recomputed from the row, never trusted from the
-// client: worked hours come from start/stop (plus travel + down time), and the
-// rate_unit says what the rate applies to — hours, tons, loads, or the day.
-// Tonnage on an hourly ticket is information, not a bill.
+// client: worked hours come from start/stop (or the typed total on a paper
+// copy), less down time, plus the job's travel and any time waited — and an
+// hourly job's minimum on a short day. The rate_unit says what the rate
+// applies to — hours, tons, loads, or the day. Tonnage on an hourly ticket
+// is information, not a bill.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createInvoice, fetchInvoicePdf, attachFileToInvoice } from '@/lib/quickbooks';
@@ -102,6 +104,17 @@ export type WorkOrder = {
   extra_hours: number | null;
   // When the office wants the driver there ('HH:MM:SS'), set on dispatch.
   report_time: string | null;
+  // HT-<n>: the ticket's own number, from a sequence. Never typed.
+  ticket_no: number | null;
+  // Paper copy: photos of a paper ticket plus typed totals, no stamps.
+  paper: boolean;
+  paper_hours: number | null;
+  paper_loads: number | null;
+  // The daily safety check.
+  safety: SafetyCheck | null;
+  // The job's minimum hours (hourly jobs), copied from the order.
+  min_hours: number | null;
+  reminded_at: string | null;
   rate: number | null;
   // What the rate applies to: 'hour', 'ton', 'load', or 'day'. Inherited from
   // the order (or the dispatched load). Null on old tickets, which fall back
@@ -156,6 +169,25 @@ export type WorkOrder = {
 // weighed. Every stamp keeps the GPS fix taken at the same moment — the time
 // alone settles nothing when a driver and a foreman remember a day
 // differently.
+// The daily safety check the driver does before rolling.
+export type SafetyCheck = { at: string; all_ok: boolean; items: Record<string, boolean>; note?: string | null };
+export const SAFETY_ITEMS = [
+  { key: 'lights', label: 'Lights and signals' },
+  { key: 'brakes', label: 'Brakes and air' },
+  { key: 'tires', label: 'Tires and wheels' },
+  { key: 'horn', label: 'Horn and backup alarm' },
+  { key: 'mirrors', label: 'Mirrors and glass' },
+  { key: 'leaks', label: 'Fluids, no leaks' },
+  { key: 'tarp', label: 'Tarp, gates and hitch' },
+  { key: 'safety_gear', label: 'Extinguisher and triangles' },
+] as const;
+
+// The ticket's own number as people say it.
+export function ticketLabel(wo: { ticket_no?: number | null; id?: string | null }): string {
+  if (wo.ticket_no != null) return `HT-${wo.ticket_no}`;
+  return wo.id ? wo.id.slice(0, 6).toUpperCase() : 'New';
+}
+
 export type WorkOrderLoad = {
   id: string;
   work_order_id: string;
@@ -181,6 +213,8 @@ export type WorkOrderLoad = {
   material: string | null;
   // Photo of the scale ticket / BOL for this load (work-tickets bucket).
   bol_photo_path: string | null;
+  // Which stamps were typed in rather than tapped.
+  typed_stamps: string[] | null;
   created_at: string;
   updated_at: string;
 };
@@ -232,6 +266,7 @@ export const EDITABLE_FIELDS = [
   'signature_name', 'signature_signed_at',
   'foreman_signature_name', 'foreman_signature_signed_at',
   'start_at', 'stop_at', 'travel_hours', 'down_hours', 'extra_hours', 'report_time', 'rate', 'rate_unit',
+  'paper', 'paper_hours', 'paper_loads', 'safety',
   'tonnage', 'tonnage_type', 'ticket_photo_path', 'short_ticket_path',
   'signature_path', 'contractor_id', 'payment_method', 'notes',
 ] as const;
@@ -248,6 +283,7 @@ export const ORDER_LOCKED_FIELDS = [
 
 const NUMERIC_FIELDS = new Set([
   'travel_hours', 'down_hours', 'extra_hours', 'rate', 'tonnage', 'truck_type_tons',
+  'paper_hours', 'paper_loads',
   'office_travel_hours', 'office_total_hours',
 ]);
 
@@ -279,20 +315,36 @@ export function onSiteHours(startAt: string | null, stopAt: string | null): numb
   return Math.round((ms / 3_600_000) * 100) / 100;
 }
 
-// Total billable hours: on-site + travel + down time + time waited.
-export function totalHours(wo: Pick<WorkOrder, 'start_at' | 'stop_at' | 'travel_hours' | 'down_hours'> & { extra_hours?: number | null }): number {
-  const sum = onSiteHours(wo.start_at, wo.stop_at)
+// The hours the truck worked, before travel: off the stamps (start/stop) on
+// a digital ticket, typed off the paper on a paper copy.
+export function truckHours(wo: Pick<WorkOrder, 'start_at' | 'stop_at'> & { paper?: boolean | null; paper_hours?: number | null }): number {
+  if (wo.paper) return Math.max(0, Number(wo.paper_hours || 0));
+  return onSiteHours(wo.start_at, wo.stop_at);
+}
+
+// Total hours on the ticket: truck hours, minus down time (the truck wasn't
+// working), plus the job's travel and any time waited. Never below zero.
+type Hours = Pick<WorkOrder, 'start_at' | 'stop_at' | 'travel_hours' | 'down_hours'>
+  & { extra_hours?: number | null; paper?: boolean | null; paper_hours?: number | null };
+export function totalHours(wo: Hours): number {
+  const sum = truckHours(wo)
+    - Number(wo.down_hours || 0)
     + Number(wo.travel_hours || 0)
-    + Number(wo.down_hours || 0)
     + Number(wo.extra_hours || 0);
-  return Math.round(sum * 100) / 100;
+  return Math.max(0, Math.round(sum * 100) / 100);
+}
+
+// What an hourly ticket bills: its hours, or the job's minimum on a short day.
+export function billableHours(wo: Hours & { min_hours?: number | null }): number {
+  return Math.max(totalHours(wo), Number(wo.min_hours || 0));
 }
 
 // The fields the billing math reads. loads_count/loads_tons are optional so
 // callers holding a form draft (no trigger-maintained rollups) still fit.
 type Billable = Pick<WorkOrder,
   'start_at' | 'stop_at' | 'travel_hours' | 'down_hours' | 'tonnage'>
-  & { extra_hours?: number | null; rate_unit?: string | null; loads_tons?: number | null; loads_count?: number | null };
+  & { extra_hours?: number | null; paper?: boolean | null; paper_hours?: number | null; paper_loads?: number | null;
+      min_hours?: number | null; rate_unit?: string | null; loads_tons?: number | null; loads_count?: number | null };
 
 // What the ticket bills: the rate times whatever quantity its rate_unit says.
 export function ticketAmount(wo: Billable & Pick<WorkOrder, 'rate'>,
@@ -325,14 +377,15 @@ export function effectiveTonnage(
 export function billableQuantity(wo: Billable,
   loads?: Pick<WorkOrderLoad, 'tons'>[]): number {
   switch (wo.rate_unit) {
-    case 'hour': return totalHours(wo);
+    case 'hour': return billableHours(wo);
     case 'ton': return effectiveTonnage(wo, loads);
-    case 'load': return Number(wo.loads_count || 0);
+    // A paper copy has no load lines; its load count is typed.
+    case 'load': return wo.paper ? Number(wo.paper_loads || 0) : Number(wo.loads_count || 0);
     // A ticket is one day's work by construction — the day rate bills once.
     case 'day': return 1;
   }
   const tons = effectiveTonnage(wo, loads);
-  return tons > 0 ? tons : totalHours(wo);
+  return tons > 0 ? tons : billableHours(wo);
 }
 
 export function billableUnit(

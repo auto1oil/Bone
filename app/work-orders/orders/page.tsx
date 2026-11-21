@@ -196,7 +196,10 @@ export default function OrdersPage() {
               : 'Nothing with that status.'}
         </p>
       ) : (
-        <div className="space-y-2">
+        // Two across on anything wider than a phone, so more orders fit on
+        // the screen; items-start keeps a card that opens its Send panel
+        // from stretching its neighbour.
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-start">
           {visible.map((o) => (
             <div
               key={o.id}
