@@ -14,8 +14,8 @@ import HaulerOnTicket from '@/components/HaulerOnTicket';
 import { BRAND } from '@/lib/brand';
 import { orderLabel, ticketDefaultsFrom, type JobOrder } from '@/lib/job-orders';
 import {
-  onSiteHours, totalHours, ticketAmount, billableUnit, billableQuantity, ticketLabel, SAFETY_ITEMS,
-  type WorkOrder, type SafetyCheck,
+  onSiteHours, totalHours, ticketAmount, billableUnit, billableQuantity, ticketLabel,
+  type WorkOrder,
 } from '@/lib/work-orders';
 import { runsOn } from '@/lib/ticket-rules';
 
@@ -252,13 +252,8 @@ export default function WorkOrderForm({
   // Paper copy: the driver ran a paper ticket and photographs it instead of
   // tapping times.
   const [paper, setPaper] = useState<boolean>(!!workOrder?.paper);
-  // The daily safety check.
-  const [safety, setSafety] = useState<SafetyCheck | null>(workOrder?.safety ?? null);
-  const [showSafety, setShowSafety] = useState(false);
-  const [safetyDraft, setSafetyDraft] = useState<Record<string, boolean>>(workOrder?.safety?.items ?? {});
-  const [safetyNote, setSafetyNote] = useState(workOrder?.safety?.note ?? '');
   const [viewPref, setViewPref] = useState<'driver' | 'full'>('full');
-  const isCrew = !!me && (CREW_ROLES.includes(me.role) || !!me.hauler_id);
+  const isCrew =!!me && (CREW_ROLES.includes(me.role) || !!me.hauler_id);
   const driverView = !!me && (isCrew ? true : viewPref === 'driver');
   // The factoring app's bill of sale for a Factor Payment ticket. The hauler
   // signs it over there; completing the ticket requires the signature.
@@ -480,7 +475,6 @@ export default function WorkOrderForm({
       paper,
       paper_hours: draft.paper_hours === '' ? null : Number(draft.paper_hours),
       paper_loads: draft.paper_loads === '' ? null : Number(draft.paper_loads),
-      safety,
       rate: draft.rate === '' ? null : Number(draft.rate),
       rate_unit: draft.rate_unit || null,
       tonnage: draft.tonnage === '' ? null : Number(draft.tonnage),
@@ -593,7 +587,7 @@ export default function WorkOrderForm({
   }
 
   // ---- Things that save the moment they happen --------------------------
-  // The job pick, the safety check, a paper photo: none of them should wait
+  // The job pick, a paper photo: neither should wait
   // on the driver remembering to tap Save.
   async function quickSave(partial: Record<string, unknown>) {
     if (!id || locked) return;
@@ -647,17 +641,6 @@ export default function WorkOrderForm({
   function switchPaper(on: boolean) {
     setPaper(on);
     quickSave({ paper: on });
-  }
-
-  function saveSafety(items: Record<string, boolean>, note: string) {
-    const check: SafetyCheck = {
-      at: new Date().toISOString(),
-      all_ok: Object.values(items).every(Boolean),
-      items,
-      note: note.trim() || null,
-    };
-    setSafety(check); setSafetyDraft(items); setSafetyNote(note);
-    quickSave({ safety: check });
   }
 
   async function save(submit: boolean, extra: Record<string, unknown> = {}) {
@@ -921,8 +904,6 @@ export default function WorkOrderForm({
   const jobChoices = orders.filter((o) => o.id === draft.order_id || runsOn(o, draft.job_date));
   // The job is the driver's to pick until the ticket is in; then the office moves it.
   const jobLocked = locked || (isCrew && !(status === 'draft' || status === 'rejected'));
-  const safetyDone = !!safety?.at;
-  const safetyBad = safety ? SAFETY_ITEMS.filter((it) => safety.items?.[it.key] === false) : [];
 
   if (driverView) return (
     <div className="space-y-4">
@@ -1034,49 +1015,6 @@ export default function WorkOrderForm({
           </div>
         )}
       </div>
-
-      {/* The daily safety check: one tap when everything's right, the list when it isn't. */}
-      {id && (
-        <div className={`bg-white border rounded-lg px-4 py-3 text-sm ${safetyDone ? (safetyBad.length ? 'border-red-300' : 'border-gray-200') : 'border-amber-300'}`}>
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <span>
-              <strong>Daily safety check</strong>{' '}
-              {safetyDone
-                ? safetyBad.length
-                  ? <span className="text-red-700">{safetyBad.length} {safetyBad.length === 1 ? 'problem' : 'problems'} · {clock(safety!.at)}</span>
-                  : <span className="text-emerald-700">✓ all OK · {clock(safety!.at)}</span>
-                : <span className="text-amber-800">not done yet</span>}
-            </span>
-            <span className="flex items-center gap-3">
-              {!safetyDone && !locked && (
-                <button type="button" onClick={() => saveSafety(Object.fromEntries(SAFETY_ITEMS.map((it) => [it.key, true])), '')}
-                  className="px-3 py-1.5 text-xs rounded-md bg-emerald-600 text-white font-medium">All OK</button>
-              )}
-              <button type="button" onClick={() => setShowSafety((v) => !v)} className="text-xs text-brand-700 underline decoration-dotted underline-offset-2">{showSafety ? 'Hide' : 'Items'}</button>
-            </span>
-          </div>
-          {showSafety && (
-            <div className="mt-2">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                {SAFETY_ITEMS.map((it) => (
-                  <label key={it.key} className="flex items-center gap-2">
-                    <input type="checkbox" className="h-4 w-4" disabled={locked}
-                      checked={safetyDraft[it.key] !== false}
-                      onChange={(e) => setSafetyDraft((d) => ({ ...d, [it.key]: e.target.checked }))} />
-                    <span className={safetyDraft[it.key] === false ? 'text-red-700 font-medium' : ''}>{it.label}</span>
-                  </label>
-                ))}
-              </div>
-              <input value={safetyNote} onChange={(e) => setSafetyNote(e.target.value)} disabled={locked}
-                placeholder="Untick what's wrong and say what it is" className={`${input} mt-2`} />
-              {!locked && (
-                <button type="button" onClick={() => { saveSafety(Object.fromEntries(SAFETY_ITEMS.map((it) => [it.key, safetyDraft[it.key] !== false])), safetyNote); setShowSafety(false); }}
-                  className="mt-2 px-3 py-1.5 text-xs rounded-md bg-brand-700 text-white font-medium">Save check</button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
 
       {!id ? (
         <div className="bg-white border-2 border-dashed border-brand-700 rounded-xl p-4 text-center">

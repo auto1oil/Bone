@@ -2589,7 +2589,8 @@ alter table public.work_orders add column if not exists ticket_no bigint default
 alter table public.work_orders add column if not exists paper       boolean not null default false;
 alter table public.work_orders add column if not exists paper_hours numeric(6,2);
 alter table public.work_orders add column if not exists paper_loads integer;
--- The daily safety check: { at, all_ok, items: { key: bool }, note }.
+-- Held a daily safety check that was since removed from the ticket. The
+-- column stays so this file runs the same everywhere; nothing reads it.
 alter table public.work_orders add column if not exists safety jsonb;
 -- An hourly job can carry a minimum: a short day bills at least this many
 -- hours. Set on the order (the column is added with job_orders, further

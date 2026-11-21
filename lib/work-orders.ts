@@ -110,8 +110,6 @@ export type WorkOrder = {
   paper: boolean;
   paper_hours: number | null;
   paper_loads: number | null;
-  // The daily safety check.
-  safety: SafetyCheck | null;
   // The job's minimum hours (hourly jobs), copied from the order.
   min_hours: number | null;
   reminded_at: string | null;
@@ -169,19 +167,6 @@ export type WorkOrder = {
 // weighed. Every stamp keeps the GPS fix taken at the same moment — the time
 // alone settles nothing when a driver and a foreman remember a day
 // differently.
-// The daily safety check the driver does before rolling.
-export type SafetyCheck = { at: string; all_ok: boolean; items: Record<string, boolean>; note?: string | null };
-export const SAFETY_ITEMS = [
-  { key: 'lights', label: 'Lights and signals' },
-  { key: 'brakes', label: 'Brakes and air' },
-  { key: 'tires', label: 'Tires and wheels' },
-  { key: 'horn', label: 'Horn and backup alarm' },
-  { key: 'mirrors', label: 'Mirrors and glass' },
-  { key: 'leaks', label: 'Fluids, no leaks' },
-  { key: 'tarp', label: 'Tarp, gates and hitch' },
-  { key: 'safety_gear', label: 'Extinguisher and triangles' },
-] as const;
-
 // The ticket's own number as people say it.
 export function ticketLabel(wo: { ticket_no?: number | null; id?: string | null }): string {
   if (wo.ticket_no != null) return `HT-${wo.ticket_no}`;
@@ -266,7 +251,7 @@ export const EDITABLE_FIELDS = [
   'signature_name', 'signature_signed_at',
   'foreman_signature_name', 'foreman_signature_signed_at',
   'start_at', 'stop_at', 'travel_hours', 'down_hours', 'extra_hours', 'report_time', 'rate', 'rate_unit',
-  'paper', 'paper_hours', 'paper_loads', 'safety',
+  'paper', 'paper_hours', 'paper_loads',
   'tonnage', 'tonnage_type', 'ticket_photo_path', 'short_ticket_path',
   'signature_path', 'contractor_id', 'payment_method', 'notes',
 ] as const;

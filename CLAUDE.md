@@ -87,7 +87,6 @@ Check in this order and report which one it was:
     is the full-screen prompt in the crew layouts.
   - **Orders stay open until the office closes them** — the owner's
     exception to the spec. Nothing auto-completes an order; don't add it.
-  - Safety check: `work_orders.safety` (`SAFETY_ITEMS`), one tap for all OK.
 - Dispatch to Bone's own drivers: the order page's "Send to Bone drivers"
   (`components/AssignDrivers.tsx`) posts to `/api/job-orders/[id]/assign`,
   office/admin only, which makes one draft ticket per driver from the order

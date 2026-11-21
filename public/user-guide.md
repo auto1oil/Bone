@@ -308,32 +308,30 @@ right) and allow them when the phone asks.
    picked. When the office adds the job it shows up the next time you come
    back to the app, and nothing you've tapped is lost. The job has to be
    picked before you can finish.
-3. **Daily safety check.** Tap **All OK** if everything is right. If
-   something isn't, tap Items, untick it, and say what's wrong.
-4. **Stamp each load with one tap**: Load in when you arrive at the pit, Load
+3. **Stamp each load with one tap**: Load in when you arrive at the pit, Load
    out when you leave loaded, Unload in when you arrive at the job, Unload
    out when you leave empty. The time saves the instant you tap; your GPS
    position is attached a moment later, so a slow fix never loses a time.
-5. **The floating button** appears after your first Load in, armed with
+4. **The floating button** appears after your first Load in, armed with
    whichever step comes next, so the whole day is the same thumb on the same
    spot. Hold and drag it to park it anywhere; the phone remembers.
-6. **BOL by photo.** On each load tap **BOL** and photograph the scale
+5. **BOL by photo.** On each load tap **BOL** and photograph the scale
    ticket. The ticket number and net tons fill in, and the photo stays on the
    load. Check the numbers. **Every load needs its BOL photo** before you can
    finish.
-7. **A mistake?** Tap a stamped time to undo it. Or tap **Edit times** on the
+6. **A mistake?** Tap a stamped time to undo it. Or tap **Edit times** on the
    load and type them in. Typed times are marked with a pencil and the office
    sees them, they have to be in order, and they can't be in the future. A
    late load can run past midnight.
-8. **Start and End set themselves**: your first Load in and your last Unload
+7. **Start and End set themselves**: your first Load in and your last Unload
    out.
-9. **Down time** is time the truck wasn't working (breakdown, stuck); it
+8. **Down time** is time the truck wasn't working (breakdown, stuck); it
    comes off your hours. **Extra time** is time you waited at the pit or the
    job; it's added. **Travel** is set by the office for the job and shows
    under them. Add a note on what happened.
-10. The **job foreman** signs on your phone if they're there. If they've
-    left you can still finish; the office sees it wasn't signed.
-11. Tap **Finish day**. It won't go until a job is picked, at least one load
+9. The **job foreman** signs on your phone if they're there. If they've
+   left you can still finish; the office sees it wasn't signed.
+10. Tap **Finish day**. It won't go until a job is picked, at least one load
     has a Load in and an Unload out, and every load has its BOL photo. It
     tells you which one is missing. **Ticket PDF** gives you the ticket with
     every BOL photo behind it, to text or email.
