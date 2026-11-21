@@ -19,7 +19,8 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   open: 'Open',
-  active: 'Active',
+  // Folded into Open; the value is still accepted on old rows.
+  active: 'Open',
   complete: 'Complete',
   cancelled: 'Cancelled',
 };

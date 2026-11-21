@@ -146,6 +146,9 @@ export default function WorkOrderList({
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_TONE[wo.status as WorkOrderStatus]}`}>
                   {STATUS_LABEL[wo.status as WorkOrderStatus]}
                 </span>
+                {wo.invoice_no && (
+                  <span className="text-[10px] text-gray-500">INV-{wo.invoice_no}</span>
+                )}
                 {wo.qb_invoice_number && (
                   <span className="text-[10px] text-gray-500">QB #{wo.qb_invoice_number}</span>
                 )}

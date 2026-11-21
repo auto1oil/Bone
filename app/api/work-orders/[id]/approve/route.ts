@@ -9,14 +9,18 @@
 // can never stamp the funder's approval, and nobody can approve their own
 // ticket.
 //
-// Office approval also invoices the customer in QuickBooks (skip with
+// Office approval is "Send Invoice": it also invoices the customer (skip with
 // invoice: false — e.g. when the office is only clearing the audit and the
-// invoice goes out later).
+// invoice goes out later). With QuickBooks connected the invoice is raised
+// there; without it, Bone's own numbered invoice is created and emailed
+// (lib/invoices.ts). Either way a failed invoice never undoes the approval.
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { invoiceWorkOrder, type WorkOrder } from '@/lib/work-orders';
+import { createTicketInvoice, quickbooksConnected } from '@/lib/invoices';
+import { invoiceLabel } from '@/lib/invoice-pdf';
 import { sendTicketToFactoring, sendTicketProgress } from '@/lib/factoring';
 
 export const runtime = 'nodejs';
@@ -87,7 +91,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const reason = (body.reason || '').trim();
     if (!reason) return NextResponse.json({ ok: false, error: 'give a reason so the crew knows what to fix' }, { status: 400 });
     if (wo.status === 'invoiced') {
-      return NextResponse.json({ ok: false, error: 'this ticket is already invoiced — void the invoice in QuickBooks first' }, { status: 400 });
+      return NextResponse.json({ ok: false, error: wo.invoice_no
+        ? `this ticket is already invoiced (${invoiceLabel(wo.invoice_no)}) — an admin voids the invoice on the Invoices tab first`
+        : 'this ticket is already invoiced — void the invoice in QuickBooks first' }, { status: 400 });
     }
     // Sending a factor ticket back means the numbers are changing under the
     // signature — the old bill of sale stops counting, and the hauler signs
@@ -149,11 +155,27 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   let invoice: Record<string, unknown> | null = null;
   let invoiceError: string | null = null;
   if (as === 'office' && body.invoice !== false) {
-    const result = await invoiceWorkOrder(db, wo.id);
-    if (result.body.ok) invoice = result.body;
-    // Leave the ticket office-approved when QuickBooks fails — the approval
-    // stands and the office can retry the invoice from the ticket screen.
-    else invoiceError = String(result.body.error || 'QuickBooks invoice failed');
+    if (await quickbooksConnected(db)) {
+      const result = await invoiceWorkOrder(db, wo.id);
+      if (result.body.ok) invoice = result.body;
+      // Leave the ticket office-approved when QuickBooks fails — the approval
+      // stands and the office can retry the invoice from the ticket screen.
+      else invoiceError = String(result.body.error || 'QuickBooks invoice failed');
+    } else {
+      // No QuickBooks: Bone's own invoice, numbered and emailed. A send that
+      // didn't go is reported but the invoice stands.
+      const result = await createTicketInvoice(db, wo.id, user.id);
+      if ('error' in result) invoiceError = result.error;
+      else invoice = {
+        ok: true, local: true,
+        invoice_id: result.invoice.id,
+        invoice_number: invoiceLabel(result.invoice.invoice_no),
+        amount: result.invoice.amount,
+        emailed: result.emailed,
+        emailed_to: result.invoice.emailed_to,
+        email_error: result.email_error,
+      };
+    }
   }
 
   // ---- A factor-marked ticket goes to the factoring app on approval. ----

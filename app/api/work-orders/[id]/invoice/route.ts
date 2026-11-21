@@ -1,13 +1,16 @@
-// POST /api/work-orders/[id]/invoice — invoice an approved ticket in
-// QuickBooks. Office/admin only.
+// POST /api/work-orders/[id]/invoice — invoice an approved ticket.
+// Office/admin only.
 //
 // Approval normally invoices the ticket in one step; this is the retry when
-// QuickBooks was down, unlinked, or missing its item at that moment.
+// that didn't land: QuickBooks was down or missing its item, or — on Bone's
+// own invoices — the ticket had no customer or rate at that moment.
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { invoiceWorkOrder } from '@/lib/work-orders';
+import { createTicketInvoice, quickbooksConnected } from '@/lib/invoices';
+import { invoiceLabel } from '@/lib/invoice-pdf';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -34,6 +37,15 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ ok: false, error: 'approve the ticket before invoicing it' }, { status: 400 });
   }
 
-  const result = await invoiceWorkOrder(db, params.id);
-  return NextResponse.json(result.body, { status: result.status });
+  if (await quickbooksConnected(db)) {
+    const result = await invoiceWorkOrder(db, params.id);
+    return NextResponse.json(result.body, { status: result.status });
+  }
+  const result = await createTicketInvoice(db, params.id, user.id);
+  if ('error' in result) return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
+  return NextResponse.json({
+    ok: true, local: true,
+    invoice_number: invoiceLabel(result.invoice.invoice_no),
+    emailed: result.emailed, emailed_to: result.invoice.emailed_to, email_error: result.email_error,
+  });
 }

@@ -67,6 +67,7 @@ export default function NavBar({ role, email }: { role: Role; email: string }) {
   const adminLinks = [
     { href: '/work-orders/orders',    label: 'Orders' },
     { href: '/work-orders',           label: 'Tickets' },
+    { href: '/work-orders/invoices',  label: 'Invoices' },
     { href: '/haulers',               label: 'Haulers' },
     { href: '/admin',                 label: 'Deliveries' },
     { href: '/admin/delivery-log',    label: 'Delivery Log' },
@@ -81,6 +82,7 @@ export default function NavBar({ role, email }: { role: Role; email: string }) {
   const officeLinks = [
     { href: '/work-orders/orders',  label: 'Orders' },
     { href: '/work-orders',         label: 'Tickets' },
+    { href: '/work-orders/invoices', label: 'Invoices' },
     { href: '/haulers',             label: 'Haulers' },
     { href: '/driver/customers',    label: 'Customers' },
     { href: '/driver/hours',        label: 'Hours' },

@@ -106,6 +106,8 @@ export type WorkOrder = {
   report_time: string | null;
   // HT-<n>: the ticket's own number, from a sequence. Never typed.
   ticket_no: number | null;
+  // Bone's own invoice number (INV-<n>) once one has been sent.
+  invoice_no: number | null;
   // Paper copy: photos of a paper ticket plus typed totals, no stamps.
   paper: boolean;
   paper_hours: number | null;
@@ -417,6 +419,57 @@ export async function getWorkOrderQbItem(db: SupabaseClient): Promise<{ id: stri
   return { id, name: (m.get('work_order_qb_item_name') || '').trim() || 'Labor' };
 }
 
+// What a ticket bills the customer: the quantity and the rate, recomputed on
+// the server from the row and its load lines. Shared by every way a ticket
+// gets invoiced (QuickBooks, or Bone's own invoice) so they can't disagree.
+export type TicketBilling =
+  | { ok: true; qty: number; rate: number; unit: string; amount: number }
+  | { ok: false; error: string };
+export async function resolveTicketBilling(db: SupabaseClient, order: WorkOrder): Promise<TicketBilling> {
+  // The load lines are the record of what was hauled, so the billable
+  // quantity is recomputed from them here rather than trusting whatever
+  // tonnage total the ticket was saved with.
+  const { data: loadRows } = await db
+    .from('work_order_loads')
+    .select('tons')
+    .eq('work_order_id', order.id);
+  const loads = (loadRows as Pick<WorkOrderLoad, 'tons'>[]) || [];
+
+  // The CUSTOMER's rate comes off the order, not the ticket. A hauler's ticket
+  // carries what the hauler is owed — billing the customer that number would
+  // hand them Bone's margin. Only a ticket with no order falls back to its
+  // own rate, and there the two are the same number anyway.
+  //
+  // The order's rate UNIT and minimum ride along for the same reason: the
+  // customer is billed on the terms the order was written under. An hourly
+  // order bills hours even when the ticket recorded tonnage — there the
+  // tonnage is information, not the bill.
+  let rate = Number(order.rate || 0);
+  let rateUnit = order.rate_unit || null;
+  let minHours = order.min_hours ?? null;
+  if (order.order_id) {
+    const { data: jo } = await db
+      .from('job_orders')
+      .select('rate, rate_unit, min_hours')
+      .eq('id', order.order_id)
+      .maybeSingle();
+    const terms = jo as { rate: number | null; rate_unit: string | null; min_hours: number | null } | null;
+    const billRate = Number(terms?.rate ?? 0);
+    if (billRate > 0) rate = billRate;
+    else if (order.hauler_id) {
+      return { ok: false, error: 'the order has no customer rate set — add one on the order before invoicing' };
+    }
+    if (terms?.rate_unit) rateUnit = terms.rate_unit;
+    if (terms?.min_hours != null) minHours = terms.min_hours;
+  }
+
+  const billed = { ...order, rate_unit: rateUnit, min_hours: minHours };
+  const qty = billableQuantity(billed, loads);
+  if (qty <= 0) return { ok: false, error: 'nothing to bill — the ticket has no hours, loads or tonnage' };
+  if (rate <= 0) return { ok: false, error: 'no rate — set the customer rate on the order before invoicing' };
+  return { ok: true, qty, rate, unit: billableUnit(billed, loads), amount: Math.round(qty * rate * 100) / 100 };
+}
+
 // Invoice one approved ticket to its customer in QuickBooks, then stamp the
 // invoice id/number back onto the row. Runs with whatever client the caller
 // passes (the approve route passes the service-role client).
@@ -433,44 +486,9 @@ export async function invoiceWorkOrder(db: SupabaseClient, workOrderId: string):
     return { status: 400, body: { ok: false, error: `already invoiced (#${order.qb_invoice_number || order.qb_invoice_id})` } };
   }
 
-  // The load lines are the record of what was hauled, so the billable
-  // quantity is recomputed from them here rather than trusting whatever
-  // tonnage total the ticket was saved with.
-  const { data: loadRows } = await db
-    .from('work_order_loads')
-    .select('tons')
-    .eq('work_order_id', workOrderId);
-  const loads = (loadRows as Pick<WorkOrderLoad, 'tons'>[]) || [];
-
-  // The CUSTOMER's rate comes off the order, not the ticket. A hauler's ticket
-  // carries what the hauler is owed — billing the customer that number would
-  // hand them Bone's margin. Only a ticket with no order falls back to its
-  // own rate, and there the two are the same number anyway.
-  //
-  // The order's rate UNIT rides along for the same reason: the customer is
-  // billed on the terms the order was written under. An hourly order bills
-  // hours even when the ticket recorded tonnage — there the tonnage is
-  // information, not the bill.
-  let rate = Number(order.rate || 0);
-  let rateUnit = order.rate_unit || null;
-  if (order.order_id) {
-    const { data: jo } = await db
-      .from('job_orders')
-      .select('rate, rate_unit')
-      .eq('id', order.order_id)
-      .maybeSingle();
-    const terms = jo as { rate: number | null; rate_unit: string | null } | null;
-    const billRate = Number(terms?.rate ?? 0);
-    if (billRate > 0) rate = billRate;
-    else if (order.hauler_id) {
-      return { status: 400, body: { ok: false, error: 'the order has no customer rate set — add one on the order before invoicing' } };
-    }
-    if (terms?.rate_unit) rateUnit = terms.rate_unit;
-  }
-
-  const qty = billableQuantity({ ...order, rate_unit: rateUnit }, loads);
-  if (qty <= 0) return { status: 400, body: { ok: false, error: 'nothing to bill — enter the start/stop times or tonnage first' } };
-  if (rate <= 0) return { status: 400, body: { ok: false, error: 'enter a rate before invoicing' } };
+  const billing = await resolveTicketBilling(db, order);
+  if ('error' in billing) return { status: 400, body: { ok: false, error: billing.error } };
+  const { qty, rate } = billing;
 
   // Resolve the QuickBooks customer: the linked business first (several
   // profiles can share one), then the customer profile's own mapping.

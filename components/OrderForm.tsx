@@ -48,7 +48,7 @@ function toDraft(o: JobOrder | null): Draft {
     tonnage_type: v(o?.tonnage_type),
     equipment_type: v(o?.equipment_type),
     unit_number: v(o?.unit_number),
-    status: v(o?.status) || 'open',
+    status: (v(o?.status) === 'active' ? 'open' : v(o?.status)) || 'open',
     notes: v(o?.notes),
   };
 }
@@ -288,7 +288,7 @@ export default function OrderForm({ order, template = null }: { order: JobOrder 
           </label>
           <label><span className={label}>Status</span>
             <select value={draft.status} onChange={(e) => set('status', e.target.value)} className={input}>
-              {ORDER_STATUSES.map((st) => <option key={st} value={st}>{ORDER_STATUS_LABEL[st]}</option>)}
+              {ORDER_STATUSES.filter((st) => st !== 'active').map((st) => <option key={st} value={st}>{ORDER_STATUS_LABEL[st]}</option>)}
             </select>
           </label>
         </div>

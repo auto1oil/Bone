@@ -22,7 +22,6 @@ type Row = JobOrder & {
 const FILTERS: { key: OrderStatus | 'all'; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'open', label: 'Open' },
-  { key: 'active', label: 'Active' },
   { key: 'complete', label: 'Complete' },
   { key: 'cancelled', label: 'Cancelled' },
 ];
@@ -138,7 +137,10 @@ export default function OrdersPage() {
     return true;
   }
 
-  const byStatus = filter === 'all' ? rows : rows.filter((r) => r.status === filter);
+  // "Active" was folded into Open: an order still carrying the old status
+  // counts as open.
+  const inTab = (status: string, key: string) => status === key || (key === 'open' && status === 'active');
+  const byStatus = filter === 'all' ? rows : rows.filter((r) => inTab(r.status, filter));
   const visible = filterActive(bar) ? byStatus.filter((r) => matchesOrder(bar, r)) : byStatus;
   const totalFlagged = rows.reduce((n, r) => n + r.flagged, 0);
 
@@ -168,7 +170,7 @@ export default function OrdersPage() {
 
       <div className="flex gap-2 mb-4 flex-wrap">
         {FILTERS.map((f) => {
-          const count = f.key === 'all' ? rows.length : rows.filter((r) => r.status === f.key).length;
+          const count = f.key === 'all' ? rows.length : rows.filter((r) => r.status === f.key || (f.key === 'open' && r.status === 'active')).length;
           return (
             <button
               key={f.key}

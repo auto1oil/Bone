@@ -208,22 +208,34 @@ phone; a decline comes back with a reason. On the company page each load
 shows Offered, Accepted, Assigned, Declined, or Done. Accepting starts their
 haul ticket with the job, phase, date and pay rate already filled in.
 
-### 4. Review and approve tickets
+### 4. Audit tickets and send invoices
 
 Tickets tab. The bell shows how many are waiting.
 
-- **Approve** sub-tab is the audit queue. Tickets the server has already
-  checked sit in a table: filed against an order, matching its rate, phase,
-  job and dates, every load timed and carrying its BOL photo, signed, with
-  something to bill. Tick them and press Approve & invoice to pass them in
-  one go; the running total is on the button. Anything the check can't vouch
-  for sits above the table with the reason: disagrees with its order, a load
+- **The audit queue** is at the top. Tickets the app has already checked sit
+  in a table under Checks out: filed against an order, matching its rate,
+  phase, job and dates, every load timed and carrying its BOL photo, signed,
+  with something to bill. Anything it can't vouch for sits above the table
+  under Needs a look, with the reason: disagrees with its order, a load
   missing a time or a BOL photo, a time that was typed instead of tapped, no
-  foreman signature, a paper copy with no photo, nothing to bill. Tap one to
-  open the verify panel, which shows what was agreed beside what was turned
-  in. A **paper copy** shows the photo of the paper ticket there; check the
-  typed hours, loads and tons against it. Choose fields picks which of the
-  columns the whole office sees.
+  foreman signature, a paper copy with no photo, nothing to bill.
+- **Tap a row to open its audit.** The order is on the left as it was
+  agreed: customer, job, phase, addresses, dates, rates, travel, minimum.
+  The haul ticket is on the right as it was turned in: driver, truck, times,
+  hours, every load with its times, ticket number, tons and BOL photo.
+  Anything on the ticket that disagrees with the order is in red. A **paper
+  copy** shows the photo of the paper ticket; check the typed hours, loads
+  and tons against it.
+- **Looks right, no edits needed: tap Send Invoice.** The invoice is created
+  with the next number, the PDF is built, and it is emailed to the customer
+  on the spot. The line under the order shows where it will go; type or fix
+  the customer's billing email there and tap Save.
+- **Needs an edit?** Tap **Needs an edit: open the ticket**, fix it in the
+  full form, and send the invoice from there. **Send back to the driver**
+  returns it with your reason.
+- **Several at once.** Tick the rows and tap **Audit & Send Invoice**; each
+  ticket gets its own invoice. The running total is on the button.
+- Choose fields picks which columns the whole office sees.
 - **The ticket PDF** is the ticket page followed by every BOL photo, six to a
   page, each captioned with its load and ticket number. It rides on the
   invoice.
@@ -247,15 +259,21 @@ Tickets tab. The bell shows how many are waiting.
   against.
 - **All tickets** filters by stage: Waiting on office, Approved, Funds
   approved, Invoiced, Sent back, Drafts.
-- **Open a ticket** to fix anything that's off, then press Approve & invoice
-  or Send back with a reason. The crew is notified either way.
+- **Open a ticket** to fix anything that's off, then press Send Invoice or
+  Send back with a reason. The crew is notified either way.
 
-**Approve = invoice.** Approving raises the customer's QuickBooks invoice in
-the same step and stamps the invoice number on the ticket. If QuickBooks is
-down, the approval stands and the ticket shows a Retry invoice button. A
-ticket marked Factor Payment is also handed to Auto 1 Funding on approval; if
-that fails, the ticket shows the reason and a Resend to factoring button, and
-the approval still stands.
+**Send Invoice = approve.** Sending the invoice approves the ticket in the
+same step and stamps the invoice number on it. If the invoice can't be made
+(no customer, no rate), the approval stands and the ticket shows a Send
+Invoice button to try again. If only the email fails (no address on file,
+or email not set up), the invoice still exists; send it from the Invoices
+tab. A ticket marked Factor Payment is also handed to Auto 1 Funding on
+approval; if that fails, the ticket shows the reason and a Resend to
+factoring button, and the approval still stands.
+
+While QuickBooks isn't connected, invoices are Bone's own, numbered INV-1001
+and up. Once QuickBooks is connected, Send Invoice raises the invoice there
+instead.
 
 **Send back** puts the ticket back with the crew, who fix it and complete it
 again. On a Factor Payment ticket this also voids the hauler's earlier
@@ -266,12 +284,32 @@ refreshed one when they resubmit.
 Crew fills the ticket → Completed (waiting on office) → Office approves?
    ▲                                                      │ no → Sent back with a reason (loops to the crew)
    └──────────────────────────────────────────────────────┘
-                                                          │ yes → Approved, QuickBooks invoice
+                                                          │ yes → Invoice sent to the customer
                                                                  → Paid on Bone's pay run,
                                                                    or by Auto 1 Funding if Factor Payment
 ```
 
-### 5. Flags on the order
+### 5. Invoices
+
+The **Invoices** tab lists every invoice sent, newest first, two across: the
+number, date, customer, job, haul ticket, amount, and whether it was emailed
+and to whom. An invoice that hasn't been emailed has an amber border and
+says why.
+
+- **Open PDF** shows the invoice: the invoice page, then the haul ticket,
+  then every BOL photo.
+- **Send** or **Send again** emails it. The box is filled with the
+  customer's billing email; type a different one and it becomes the address
+  on file.
+- **Open ticket** goes to the haul ticket behind it.
+- **Void** is admin only and asks why. The number is never reused. The
+  ticket goes back to Approved, so it can be fixed and invoiced again under
+  a new number.
+
+Search by invoice number, customer, job or ticket. The Not emailed tab is the
+list to work through.
+
+### 6. Flags on the order
 
 A ticket at a different rate, on a different phase or job, or worked outside
 the order's dates is flagged rather than quietly billed. The order page lists

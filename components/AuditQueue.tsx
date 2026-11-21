@@ -3,18 +3,19 @@ import { Fragment, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase-browser';
 import {
-  totalHours, ticketAmount, onSiteHours, billableUnit, billableQuantity,
-  type WorkOrder,
+  totalHours, ticketAmount, onSiteHours, billableUnit, billableQuantity, ticketLabel,
+  type WorkOrder, type WorkOrderLoad,
 } from '@/lib/work-orders';
 import type { JobOrder } from '@/lib/job-orders';
 import PlaceCheckPanel from '@/components/PlaceCheckPanel';
 import type { PlaceCheck } from '@/lib/place-check';
 import { loadFlags } from '@/lib/ticket-rules';
 
-// What the verify panel reads off the ticket's order.
-type OrderFacts = Pick<JobOrder,
-  'id' | 'business_id' | 'job_number' | 'phase_code'
-  | 'rate' | 'pay_rate' | 'rate_unit' | 'fuel_surcharge'>;
+// The audit reads the whole order: it is laid out beside the ticket.
+type OrderFacts = JobOrder;
+type Biz = { id: string; name: string; address: string | null; email: string | null };
+type AuditLoad = Pick<WorkOrderLoad, 'load_no' | 'load_in_at' | 'load_out_at' | 'unload_in_at' | 'unload_out_at'
+  | 'tons' | 'ticket_number' | 'bol_photo_path' | 'typed_stamps'> & { work_order_id: string };
 
 // The audit queue.
 //
@@ -106,7 +107,12 @@ export default function AuditQueue() {
   // right, approve without leaving the queue.
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [orderFacts, setOrderFacts] = useState<Record<string, OrderFacts>>({});
-  const [bizNames, setBizNames] = useState<Record<string, string>>({});
+  const [biz, setBiz] = useState<Record<string, Biz>>({});
+  const [loadsById, setLoadsById] = useState<Record<string, AuditLoad[]>>({});
+  // What just went out: "INV-1001 emailed to …".
+  const [notices, setNotices] = useState<string[]>([]);
+  // The billing email being typed for a customer, keyed by business.
+  const [emailDraft, setEmailDraft] = useState<Record<string, string>>({});
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   // What the loads on each ticket need looked at (missing times, missing
   // BOL photos, typed times), keyed by ticket.
@@ -122,36 +128,34 @@ export default function AuditQueue() {
     setRows(list);
     if (list.length > 0) {
       const { data: loadRows } = await supabase.from('work_order_loads')
-        .select('work_order_id, load_no, load_in_at, load_out_at, unload_in_at, unload_out_at, tons, bol_photo_path, typed_stamps')
-        .in('work_order_id', list.map((w) => w.id));
-      type L = Parameters<typeof loadFlags>[0][number] & { work_order_id: string };
-      const byTicket: Record<string, L[]> = {};
-      for (const l of (loadRows as L[]) || []) (byTicket[l.work_order_id] ||= []).push(l);
+        .select('work_order_id, load_no, load_in_at, load_out_at, unload_in_at, unload_out_at, tons, ticket_number, bol_photo_path, typed_stamps')
+        .in('work_order_id', list.map((w) => w.id)).order('load_no');
+      const byTicket: Record<string, AuditLoad[]> = {};
+      for (const l of (loadRows as AuditLoad[]) || []) (byTicket[l.work_order_id] ||= []).push(l);
+      setLoadsById(byTicket);
       setLoadIssues(Object.fromEntries(Object.entries(byTicket).map(([k, v]) => [k, loadFlags(v)])));
     } else {
+      setLoadsById({});
       setLoadIssues({});
     }
     const saved = (setting as { value: string } | null)?.value;
     if (saved) setKeys(saved.split(',').map((k) => k.trim()).filter(Boolean));
 
-    // The orders behind the queue, for the verify panel: both rates, the
-    // fuel surcharge, and who the customer is.
+    // The orders behind the queue and their customers, laid out beside each
+    // ticket in the audit.
     const orderIds = [...new Set(list.map((w) => w.order_id).filter(Boolean))] as string[];
+    const byId: Record<string, OrderFacts> = {};
     if (orderIds.length > 0) {
-      const { data: ords } = await supabase
-        .from('job_orders')
-        .select('id, business_id, job_number, phase_code, rate, pay_rate, rate_unit, fuel_surcharge')
-        .in('id', orderIds);
-      const byId: Record<string, OrderFacts> = {};
+      const { data: ords } = await supabase.from('job_orders').select('*').in('id', orderIds);
       for (const o of (ords as OrderFacts[]) || []) byId[o.id] = o;
-      setOrderFacts(byId);
-      const bizIds = [...new Set(((ords as OrderFacts[]) || []).map((o) => o.business_id).filter(Boolean))] as string[];
-      if (bizIds.length > 0) {
-        const { data: biz } = await supabase.from('businesses').select('id, name').in('id', bizIds);
-        const names: Record<string, string> = {};
-        for (const b of (biz as { id: string; name: string }[]) || []) names[b.id] = b.name;
-        setBizNames(names);
-      }
+    }
+    setOrderFacts(byId);
+    const bizIds = [...new Set([...Object.values(byId).map((o) => o.business_id), ...list.map((w) => w.business_id)].filter(Boolean))] as string[];
+    if (bizIds.length > 0) {
+      const { data: bizRows } = await supabase.from('businesses').select('id, name, address, email').in('id', bizIds);
+      setBiz(Object.fromEntries(((bizRows as Biz[]) || []).map((x) => [x.id, x])));
+    } else {
+      setBiz({});
     }
     setLoading(false);
   }, [supabase]);
@@ -185,10 +189,11 @@ export default function AuditQueue() {
   async function approveSelected() {
     const ids = [...selected];
     if (ids.length === 0) return;
-    setBusy(true); setErrors([]); setProgress('');
+    setBusy(true); setErrors([]); setNotices([]); setProgress('');
     const failed: string[] = [];
+    const sentNotes: string[] = [];
     for (let i = 0; i < ids.length; i++) {
-      setProgress(`Approving ${i + 1} of ${ids.length}…`);
+      setProgress(`Sending ${i + 1} of ${ids.length}…`);
       try {
         const res = await fetch(`/api/work-orders/${ids[i]}/approve`, {
           method: 'POST',
@@ -197,15 +202,27 @@ export default function AuditQueue() {
         });
         const json = await res.json();
         if (!json.ok) failed.push(`${shortName(ids[i])}: ${json.error || 'failed'}`);
-        else if (json.invoice_error) failed.push(`${shortName(ids[i])}: approved, but QuickBooks said ${json.invoice_error}`);
+        else if (json.invoice_error) failed.push(`${shortName(ids[i])}: approved, but the invoice didn\u2019t go: ${json.invoice_error}`);
+        else sentNotes.push(invoiceNote(ids[i], json));
       } catch {
         failed.push(`${shortName(ids[i])}: network error`);
       }
     }
     setBusy(false); setProgress('');
     setErrors(failed);
+    setNotices(sentNotes);
     setSelected(new Set());
     refresh();
+  }
+
+  // One line on what happened to a ticket's invoice.
+  function invoiceNote(id: string, json: { invoice?: { invoice_number?: string; local?: boolean; emailed?: boolean; emailed_to?: string | null; email_error?: string | null } | null }): string {
+    const inv = json.invoice;
+    if (!inv) return `${shortName(id)}: approved.`;
+    if (!inv.local) return `${shortName(id)}: invoiced in QuickBooks as #${inv.invoice_number}.`;
+    return inv.emailed
+      ? `${shortName(id)}: invoice ${inv.invoice_number} emailed to ${inv.emailed_to}.`
+      : `${shortName(id)}: invoice ${inv.invoice_number} created, but not emailed. ${inv.email_error || ''} It\u2019s on the Invoices tab to send.`;
   }
 
   function shortName(id: string) {
@@ -215,7 +232,7 @@ export default function AuditQueue() {
 
   // Approve straight from the verify panel — same route, one ticket.
   async function approveOne(id: string) {
-    setBusy(true); setErrors([]); setProgress('Approving…');
+    setBusy(true); setErrors([]); setNotices([]); setProgress('Sending…');
     try {
       const res = await fetch(`/api/work-orders/${id}/approve`, {
         method: 'POST',
@@ -224,8 +241,11 @@ export default function AuditQueue() {
       });
       const json = await res.json();
       if (!json.ok) setErrors([`${shortName(id)}: ${json.error || 'failed'}`]);
-      else if (json.invoice_error) setErrors([`${shortName(id)}: approved, but QuickBooks said ${json.invoice_error}`]);
-      else if (json.factor_error) setErrors([`${shortName(id)}: approved, but the factoring hand-off said ${json.factor_error}`]);
+      else if (json.invoice_error) setErrors([`${shortName(id)}: approved, but the invoice didn\u2019t go: ${json.invoice_error}`]);
+      else {
+        setNotices([invoiceNote(id, json)]);
+        if (json.factor_error) setErrors([`${shortName(id)}: the factoring hand-off said ${json.factor_error}`]);
+      }
     } catch {
       setErrors([`${shortName(id)}: network error`]);
     }
@@ -234,99 +254,224 @@ export default function AuditQueue() {
     refresh();
   }
 
-  // The expanded view: the order's terms on the left to verify against, the
-  // haul ticket on the right, and the approve button right there.
+  // Send a ticket back to its driver with what needs fixing.
+  async function sendBack(id: string) {
+    const reason = window.prompt('What needs fixing? The driver sees this.')?.trim();
+    if (!reason) return;
+    setBusy(true); setErrors([]); setNotices([]);
+    try {
+      const res = await fetch(`/api/work-orders/${id}/approve`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ as: 'office', reject: true, reason }),
+      });
+      const json = await res.json();
+      if (!json.ok) setErrors([`${shortName(id)}: ${json.error || 'failed'}`]);
+      else setNotices([`${shortName(id)}: sent back to the driver.`]);
+    } catch {
+      setErrors([`${shortName(id)}: network error`]);
+    }
+    setBusy(false);
+    setExpandedId(null);
+    refresh();
+  }
+
+  // Where a customer's invoices are emailed.
+  async function saveEmail(bizId: string, email: string) {
+    setBusy(true); setErrors([]);
+    try {
+      const res = await fetch(`/api/businesses/${bizId}/email`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }),
+      });
+      const json = await res.json();
+      if (!json.ok) setErrors([json.error || 'Could not save the email.']);
+      else {
+        setBiz((m) => ({ ...m, [bizId]: { ...m[bizId], email: json.email } }));
+        setEmailDraft((d) => { const n = { ...d }; delete n[bizId]; return n; });
+      }
+    } catch {
+      setErrors(['Network error saving the email.']);
+    }
+    setBusy(false);
+  }
+
+  // Open a stored photo. The tab opens before the await — Safari blocks a
+  // window.open that comes after one.
+  async function openFile(path: string) {
+    const tab = window.open('about:blank', '_blank');
+    const { data } = await supabase.storage.from('work-tickets').createSignedUrl(path, 300);
+    if (data?.signedUrl) { if (tab) tab.location.href = data.signedUrl; else window.location.href = data.signedUrl; }
+    else tab?.close();
+  }
+
+  async function openTicketPdf(id: string) {
+    const tab = window.open('about:blank', '_blank');
+    try {
+      const res = await fetch(`/api/work-orders/${id}/ticket-pdf`, { method: 'POST' });
+      const json = await res.json();
+      if (json.ok && json.url) { if (tab) tab.location.href = json.url; else window.location.href = json.url; }
+      else { tab?.close(); setErrors([json.error || 'Could not build the ticket PDF.']); }
+    } catch {
+      tab?.close(); setErrors(['Network error building the ticket PDF.']);
+    }
+  }
+
+  // The audit, opened: the order as it was agreed on the left, the haul
+  // ticket as it was turned in on the right, so the two can be read across.
+  // Looks right and needs no edits → Send Invoice, right here.
   function verifyPanel(w: WorkOrder) {
     const o = w.order_id ? orderFacts[w.order_id] : undefined;
+    const b = (o?.business_id && biz[o.business_id]) || (w.business_id && biz[w.business_id]) || null;
+    const bizId = o?.business_id || w.business_id || null;
     const per = o?.rate_unit || w.rate_unit || 'hour';
-    const differs = (a: string | null, b: string | null | undefined) =>
-      !!a && !!b && a.trim().toLowerCase() !== String(b).trim().toLowerCase();
-    const facts: [string, string, boolean?][] = [
-      ['Customer', (o?.business_id && bizNames[o.business_id]) || w.customer_number || '—'],
-      ['Date', w.job_date || '—'],
-      ['Hauler', w.trucking_company || (w.hauler_id ? 'hauler' : 'own crew')],
-      ['Unit #', w.unit_number || '—'],
-      ['Job #', w.job_number || '—', differs(w.job_number, o?.job_number)],
-      ['Phase dispatch', w.phase_code || '—', differs(w.phase_code, o?.phase_code)],
-      ['Bone rate', o?.rate != null ? `$${Number(o.rate).toFixed(2)}/${per}` : '—'],
-      ['Hauler rate', o?.pay_rate != null
-        ? `$${Number(o.pay_rate).toFixed(2)}/${per}`
-        : (w.hauler_id && w.rate != null ? `$${Number(w.rate).toFixed(2)}/${per}` : '—')],
-      ['Fuel surcharge', o?.fuel_surcharge != null ? `$${Number(o.fuel_surcharge).toFixed(2)}` : '—'],
-    ];
+    const loads = loadsById[w.id] || [];
+    const differs = (a: unknown, c: unknown) =>
+      a != null && a !== '' && c != null && c !== '' && String(a).trim().toLowerCase() !== String(c).trim().toLowerCase();
+    const clock = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—');
+    const hrs = (n: number | null | undefined) => (n == null ? '—' : `${Number(n).toFixed(2)} h`);
+    const money = (n: number | null | undefined) => (n == null ? '—' : `$${Number(n).toFixed(2)}`);
     const reason = needsEyes(w, loadIssues[w.id]);
+    // What the customer is billed: the order's rate and unit, not the
+    // ticket's (a lessor's ticket carries what the lessor is paid).
+    const billed = { ...w, rate_unit: o?.rate_unit || w.rate_unit, min_hours: o?.min_hours ?? w.min_hours };
+    const qty = billableQuantity(billed);
+    const custRate = Number(o?.rate ?? w.rate ?? 0);
+    const row = (k: string, v: React.ReactNode, off = false) => (
+      <div key={k} className="flex justify-between gap-3 py-0.5">
+        <dt className="text-gray-500 shrink-0">{k}</dt>
+        <dd className={`text-right ${off ? 'text-red-600 font-semibold' : 'text-gray-900'}`}>{v}{off ? ' ≠ order' : ''}</dd>
+      </div>
+    );
+    const emailValue = bizId ? (emailDraft[bizId] ?? b?.email ?? '') : '';
+
     return (
       <div className="rounded-md border border-gray-200 bg-gray-50 p-3 mt-2">
-        {reason && <p className="text-xs text-red-700 font-medium mb-2">{reason}</p>}
+        {reason && <p className="text-xs text-red-700 font-medium mb-2">Look at: {reason}</p>}
         {!w.paper && (loadIssues[w.id]?.length || 0) > 1 && (
           <ul className="text-xs text-red-700 mb-2 list-disc pl-4">
             {loadIssues[w.id].map((f) => <li key={f}>{f}</li>)}
           </ul>
         )}
-        {w.paper && <p className="text-xs text-gray-600 mb-2">Paper copy: the hours, loads and tons were typed off the paper ticket. Check them against the photo.</p>}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Left: what was agreed, to verify against. */}
-          <dl className="text-sm space-y-1.5">
-            {facts.map(([k, v, off]) => (
-              <div key={k} className="flex justify-between gap-3">
-                <dt className="text-gray-500">{k}</dt>
-                <dd className={`text-right font-medium ${off ? 'text-red-600' : 'text-gray-900'}`}>
-                  {v}{off ? ' ≠ order' : ''}
-                </dd>
-              </div>
-            ))}
-            <div className="pt-2 flex gap-2 flex-wrap">
-              <button
-                onClick={() => approveOne(w.id)}
-                disabled={busy}
-                className="px-4 py-2 text-sm rounded-md bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {busy ? (progress || 'Approving…') : 'Approve & invoice'}
-              </button>
-              <Link
-                href={`/work-orders/${w.id}`}
-                className="px-4 py-2 text-sm rounded-md border border-gray-300 hover:bg-white"
-              >
-                Open full ticket
-              </Link>
-            </div>
-          </dl>
 
-          {/* Right: the haul ticket as turned in. */}
-          <div className="text-sm">
-            <div className="rounded-md border border-gray-200 bg-white p-3">
-              <p className="font-semibold text-gray-900 mb-1.5">
-                Haul ticket{w.ticket_number ? ` #${w.ticket_number}` : ''}
-                {w.driver_name ? ` — ${w.driver_name}` : ''}
-              </p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-700">
-                <span>On site <strong className="tabular-nums">{onSiteHours(w.start_at, w.stop_at).toFixed(2)}</strong> h</span>
-                <span>Total <strong className="tabular-nums">{totalHours(w).toFixed(2)}</strong> h</span>
-                <span><strong className="tabular-nums">{w.loads_count ?? 0}</strong> loads</span>
-                <span><strong className="tabular-nums">{Number(w.loads_tons || 0).toFixed(2)}</strong> tons</span>
-                <span className="col-span-2">
-                  Bills <strong className="tabular-nums">{billableQuantity(w).toFixed(2)}</strong> {billableUnit(w)}
-                  {' '}= <strong className="tabular-nums">${ticketAmount(w).toFixed(2)}</strong>
-                </span>
-                <span>{w.foreman_signature_path ? 'Foreman signed ✓' : 'Foreman NOT signed'}</span>
-                <span>{w.signature_path ? 'Driver signed ✓' : 'Driver not signed'}</span>
-                {w.payment_method === 'factor' && (
-                  <span className="col-span-2 font-medium text-brand-700">
-                    Factor Payment — approval sends this to the factoring app.
-                  </span>
-                )}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {/* ---- Left: the order, as agreed ---- */}
+          <div className="rounded-md border border-gray-200 bg-white p-3 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
+              The order{o ? ` · #${o.order_number}` : ''}
+            </p>
+            {!o ? (
+              <p className="text-sm text-red-700">This ticket isn&apos;t on an order, so there is nothing to compare it with. Open the full ticket and put it on one.</p>
+            ) : (
+              <dl>
+                {row('Customer', b?.name || o.customer_number || '—')}
+                {row('Job', o.job_name || '—')}
+                {row('Job #', o.job_number || '—')}
+                {row('Phase', o.phase_code || '—')}
+                {row('Load at (pit)', o.pickup_address || '—')}
+                {row('Unload at', o.dropoff_address || o.job_address || '—')}
+                {row('Runs', [o.start_date, o.end_date].filter(Boolean).join(' → ') || 'no dates')}
+                {row('Daily hours', o.start_time && o.stop_time ? `${o.start_time.slice(0, 5)} – ${o.stop_time.slice(0, 5)}` : '—')}
+                {row('Customer rate', o.rate != null ? `${money(o.rate)}/${per}` : '—')}
+                {row('Hauler pay rate', o.pay_rate != null ? `${money(o.pay_rate)}/${per}` : '—')}
+                {row('Travel', hrs(o.travel_hours))}
+                {row('Minimum', o.min_hours != null ? `${Number(o.min_hours).toFixed(2)} h per ticket` : 'none')}
+                {row('Fuel surcharge', money(o.fuel_surcharge))}
+                {o.notes && <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap">{o.notes}</p>}
+              </dl>
+            )}
+            {/* Where the invoice goes. The office can fix it here. */}
+            {bizId && (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Invoice is emailed to</label>
+                <div className="flex gap-2">
+                  <input type="email" inputMode="email" value={emailValue} placeholder="billing@customer.com"
+                    onChange={(e) => setEmailDraft((d) => ({ ...d, [bizId]: e.target.value }))}
+                    className={`flex-1 min-w-0 px-2.5 py-1.5 border rounded-md text-sm ${emailValue.trim() ? 'border-gray-300' : 'border-amber-400 bg-amber-50'}`} />
+                  {emailValue.trim() !== (b?.email || '') && (
+                    <button type="button" onClick={() => saveEmail(bizId, emailValue)} disabled={busy}
+                      className="px-3 py-1.5 text-xs rounded-md border border-brand-700 text-brand-700 font-medium disabled:opacity-50">Save</button>
+                  )}
+                </div>
+                {!emailValue.trim() && <p className="text-[11px] text-amber-800 mt-1">No email on file. The invoice is still created; add the address to have it sent.</p>}
               </div>
-              {photoUrl ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={photoUrl} alt="Paper ticket" className="mt-2 max-h-64 w-auto rounded border border-gray-200" />
-              ) : w.ticket_photo_path ? (
-                <p className="mt-2 text-xs text-gray-400">Loading the paper-ticket photo…</p>
-              ) : !w.paper ? (
-                <p className="mt-2 text-xs text-gray-500">Digital ticket: the stamps and BOL photos are the record. Open the ticket PDF to see every BOL.</p>
-              ) : (
-                <p className="mt-2 text-xs text-red-600">Paper copy with no photo of the paper ticket.</p>
-              )}
-            </div>
+            )}
+          </div>
+
+          {/* ---- Right: the haul ticket, as turned in ---- */}
+          <div className="rounded-md border border-gray-200 bg-white p-3 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
+              The haul ticket · {ticketLabel(w)}{w.paper ? ' · paper copy' : ''}
+            </p>
+            <dl>
+              {row('Date', w.job_date || '—', !!o && !!w.job_date && ((!!o.start_date && w.job_date < o.start_date) || (!!o.end_date && w.job_date > o.end_date)))}
+              {row('Driver', w.driver_name || '—')}
+              {row('Hauler', w.trucking_company || (w.hauler_id ? 'lessor' : 'Bone crew'))}
+              {row('Truck', [w.unit_number ? `#${w.unit_number}` : null, w.plate_number, w.truck_type].filter(Boolean).join(' · ') || '—')}
+              {row('Job #', w.job_number || '—', differs(w.job_number, o?.job_number))}
+              {row('Phase', w.phase_code || '—', differs(w.phase_code, o?.phase_code))}
+              {row('Pit', w.supplier || '—')}
+              {row('Material', w.material || '—')}
+              {w.paper
+                ? row('Hours on the paper', hrs(w.paper_hours))
+                : row('Start – End', `${clock(w.start_at)} – ${clock(w.stop_at)} · ${onSiteHours(w.start_at, w.stop_at).toFixed(2)} h`)}
+              {row('Down time (off)', hrs(w.down_hours))}
+              {row('Extra / waited (on)', hrs(w.extra_hours))}
+              {row('Travel', hrs(w.travel_hours), !!o && Number(w.travel_hours || 0) !== Number(o.travel_hours || 0))}
+              {row('Total hours', <strong>{totalHours(w).toFixed(2)} h</strong>)}
+              {row('Loads · tons', w.paper
+                ? `${w.paper_loads ?? 0} · ${Number(w.tonnage || 0).toFixed(2)}`
+                : `${w.loads_count ?? 0} · ${Number(w.loads_tons || 0).toFixed(2)}`)}
+              {row('Foreman', w.foreman_signature_path ? `signed${w.foreman_signature_name ? ` · ${w.foreman_signature_name}` : ''}` : w.paper ? 'on the paper' : 'NOT signed', !w.paper && !w.foreman_signature_path)}
+              {w.payment_method === 'factor' && row('Pay', 'Factor Payment — approval sends this to the factoring app')}
+            </dl>
+            {w.notes && <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap">Driver&apos;s notes: {w.notes}</p>}
+
+            {/* Every load, with its times and its BOL. */}
+            {!w.paper && loads.length > 0 && (
+              <div className="mt-2 overflow-x-auto">
+                <table className="min-w-full text-xs">
+                  <thead className="text-gray-500">
+                    <tr>
+                      <th className="text-left font-medium pr-2">#</th>
+                      <th className="text-left font-medium pr-2">Load in → out</th>
+                      <th className="text-left font-medium pr-2">Unload in → out</th>
+                      <th className="text-left font-medium pr-2">Ticket</th>
+                      <th className="text-right font-medium pr-2">Tons</th>
+                      <th className="text-left font-medium">BOL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loads.map((l) => (
+                      <tr key={l.load_no} className="border-t border-gray-100 tabular-nums">
+                        <td className="pr-2 py-0.5">{l.load_no}</td>
+                        <td className="pr-2">{clock(l.load_in_at)} → {clock(l.load_out_at)}</td>
+                        <td className="pr-2">{clock(l.unload_in_at)} → {clock(l.unload_out_at)}{l.typed_stamps?.length ? ' ✎' : ''}</td>
+                        <td className="pr-2">{l.ticket_number || '—'}</td>
+                        <td className="pr-2 text-right">{l.tons != null ? Number(l.tons).toFixed(2) : '—'}</td>
+                        <td>{l.bol_photo_path
+                          ? <button type="button" onClick={() => openFile(l.bol_photo_path!)} className="text-brand-700 underline decoration-dotted">photo</button>
+                          : <span className="text-red-600">missing</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {w.paper && (photoUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={photoUrl} alt="Paper ticket" className="mt-2 max-h-72 w-auto rounded border border-gray-200" />
+            ) : w.ticket_photo_path ? (
+              <p className="mt-2 text-xs text-gray-400">Loading the paper-ticket photo…</p>
+            ) : (
+              <p className="mt-2 text-xs text-red-600">Paper copy with no photo of the paper ticket.</p>
+            ))}
+            {w.paper && <p className="text-xs text-gray-600 mt-1">The hours, loads and tons were typed off the paper. Check them against the photo.</p>}
+
+            <button type="button" onClick={() => openTicketPdf(w.id)} disabled={busy}
+              className="mt-2 text-xs text-brand-700 underline decoration-dotted underline-offset-2 disabled:opacity-50">
+              Open the ticket PDF (with every BOL photo)
+            </button>
+
             <div className="mt-2">
               <PlaceCheckPanel
                 workOrderId={w.id}
@@ -336,6 +481,28 @@ export default function AuditQueue() {
                 onChange={(c) => setRows((rs) => rs.map((r) => (r.id === w.id ? { ...r, place_check: c, place_check_at: c.checked_at } : r)))}
               />
             </div>
+          </div>
+        </div>
+
+        {/* ---- The decision ---- */}
+        <div className="mt-3 rounded-md border border-gray-200 bg-white p-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-sm">
+            <span className="text-gray-500">Invoice: </span>
+            <strong className="tabular-nums">{qty.toFixed(2)} {billableUnit(billed)} × {money(custRate)} = {money(Math.round(qty * custRate * 100) / 100)}</strong>
+            {b?.name ? <span className="text-gray-500"> to {b.name}</span> : null}
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => approveOne(w.id)} disabled={busy}
+              className="px-4 py-2 text-sm rounded-md bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50">
+              {busy ? (progress || 'Sending…') : 'Send Invoice'}
+            </button>
+            <Link href={`/work-orders/${w.id}`} className="px-4 py-2 text-sm rounded-md border border-gray-300 hover:bg-gray-50">
+              Needs an edit: open the ticket
+            </Link>
+            <button onClick={() => sendBack(w.id)} disabled={busy}
+              className="px-4 py-2 text-sm rounded-md border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50">
+              Send back to the driver
+            </button>
           </div>
         </div>
       </div>
@@ -408,6 +575,14 @@ export default function AuditQueue() {
         </div>
       )}
 
+      {notices.length > 0 && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          <ul className="space-y-0.5">
+            {notices.map((n) => <li key={n}>{n}</li>)}
+          </ul>
+        </div>
+      )}
+
       {errors.length > 0 && (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           <strong>Some didn&apos;t go through:</strong>
@@ -442,7 +617,7 @@ export default function AuditQueue() {
                     </span>
                     <span className="text-sm font-semibold shrink-0">${ticketAmount(w).toFixed(2)}</span>
                   </div>
-                  <p className="text-xs text-red-700 font-medium mt-1">{needsEyes(w, loadIssues[w.id])}</p>
+                  <p className="text-xs text-red-700 font-medium mt-1">{needsEyes(w, loadIssues[w.id])} <span className="text-brand-700 font-semibold">· {expandedId === w.id ? 'close' : 'tap to open the audit'}</span></p>
                   <div className="text-xs text-gray-600 mt-1">
                     {shown.map((c) => `${c.label} ${c.get(w) || '—'}`).join(' · ')}
                   </div>
@@ -477,8 +652,12 @@ export default function AuditQueue() {
           </div>
 
           <p className="text-xs text-gray-500 mb-2">
-            These match their order on rate, phase, job and dates, and have a
-            photo and something to bill. Tick and pass them without opening each one.
+            These match their order on rate, phase, job and dates, every load has its times and BOL, and there is
+            something to bill.
+          </p>
+          <p className="text-sm text-brand-700 bg-brand-50 border border-brand-200 rounded-md px-3 py-2 mb-2">
+            <strong>Tap a row to open its audit:</strong> the order on the left, the haul ticket on the right. If it looks
+            right, tap <strong>Send Invoice</strong>. Or tick several and send them together below.
           </p>
 
           <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -502,7 +681,7 @@ export default function AuditQueue() {
                           type="checkbox"
                           checked={selected.has(w.id)}
                           onChange={() => toggle(w.id)}
-                          aria-label="Select for approval"
+                          aria-label="Select to send its invoice"
                         />
                       </td>
                       {shown.map((c) => (
@@ -510,8 +689,8 @@ export default function AuditQueue() {
                           {c.get(w) || '—'}
                         </td>
                       ))}
-                      <td className="px-3 py-2 text-right text-xs text-brand-700">
-                        {expandedId === w.id ? 'Close ▾' : 'Verify ▸'}
+                      <td className="px-3 py-2 text-right text-xs font-semibold text-brand-700 whitespace-nowrap">
+                        {expandedId === w.id ? 'Close ▾' : 'Open audit ▸'}
                       </td>
                     </tr>
                     {expandedId === w.id && (
@@ -534,13 +713,13 @@ export default function AuditQueue() {
               className="px-4 py-2 text-sm rounded-md bg-brand-700 text-white font-medium hover:bg-brand-900 disabled:opacity-40"
             >
               {busy
-                ? (progress || 'Approving…')
+                ? (progress || 'Sending…')
                 : selected.size === 0
-                  ? 'Approve selected'
-                  : `Approve ${selected.size} · $${selectedTotal.toFixed(2)}`}
+                  ? 'Audit & Send Invoice'
+                  : `Audit & Send Invoice · ${selected.size} · $${selectedTotal.toFixed(2)}`}
             </button>
             <span className="text-xs text-gray-500">
-              Approving raises each customer&apos;s QuickBooks invoice.
+              Each ticket gets its own numbered invoice, emailed to the customer and filed under Invoices.
             </span>
           </div>
         </section>

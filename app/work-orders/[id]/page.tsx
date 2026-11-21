@@ -53,7 +53,11 @@ export default function OfficeWorkOrderPage({ params }: { params: { id: string }
     const res = await fetch(`/api/work-orders/${wo.id}/invoice`, { method: 'POST' });
     const json = await res.json();
     setInvoiceBusy(false);
-    setInvoiceMsg(json.ok ? `Invoiced — QuickBooks #${json.invoice_number}.` : (json.error || 'QuickBooks invoice failed.'));
+    setInvoiceMsg(json.ok
+      ? (json.local
+        ? (json.emailed ? `Invoice ${json.invoice_number} emailed to ${json.emailed_to}.` : `Invoice ${json.invoice_number} created, not emailed. ${json.email_error || ''} Send it from the Invoices tab.`)
+        : `Invoiced — QuickBooks #${json.invoice_number}.`)
+      : (json.error || 'The invoice didn\u2019t go.'));
     if (json.ok) {
       const fresh = await fetch(`/api/work-orders/${wo.id}`, { cache: 'no-store' }).then((r) => r.json());
       if (fresh.ok) setWo(fresh.work_order as WorkOrder);
@@ -133,13 +137,18 @@ export default function OfficeWorkOrderPage({ params }: { params: { id: string }
             disabled={invoiceBusy}
             className="px-3 py-1.5 text-sm bg-brand-700 text-white rounded-md hover:bg-brand-900 disabled:opacity-50 font-medium"
           >
-            {invoiceBusy ? 'Invoicing…' : 'Invoice in QuickBooks'}
+            {invoiceBusy ? 'Sending…' : 'Send Invoice'}
           </button>
         </div>
       )}
       {wo.qb_invoice_number && (
         <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2 mb-3">
           Invoiced in QuickBooks as #{wo.qb_invoice_number}.
+        </p>
+      )}
+      {wo.invoice_no && (
+        <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2 mb-3">
+          Invoiced as INV-{wo.invoice_no}. It&apos;s on the <a href="/work-orders/invoices" className="underline">Invoices</a> tab.
         </p>
       )}
       {invoiceMsg && <p className="text-sm text-gray-700 mb-3">{invoiceMsg}</p>}

@@ -43,16 +43,16 @@ export default function WorkOrdersPage() {
   const filterFn = useMemo(() => (wo: WorkOrder) => matchesTicket(bar, wo), [bar]);
   const onCounts = useCallback((m: number, t: number) => { setMatched(m); setTotal(t); }, []);
 
-  // Retry an invoice that QuickBooks rejected when the ticket was approved.
+  // Send the invoice for a ticket that was approved without one going out.
   const invoiceAction = {
-    label: 'Invoice',
-    busyLabel: 'Invoicing…',
-    when: (wo: { status: string; qb_invoice_id: string | null }) =>
-      !wo.qb_invoice_id && (wo.status === 'office_approved' || wo.status === 'funds_approved'),
+    label: 'Send Invoice',
+    busyLabel: 'Sending…',
+    when: (wo: { status: string; qb_invoice_id: string | null; invoice_no?: number | null }) =>
+      !wo.qb_invoice_id && !wo.invoice_no && (wo.status === 'office_approved' || wo.status === 'funds_approved'),
     run: async (wo: { id: string }) => {
       const res = await fetch(`/api/work-orders/${wo.id}/invoice`, { method: 'POST' });
       const json = await res.json();
-      return json.ok ? null : (json.error || 'QuickBooks invoice failed');
+      return json.ok ? null : (json.error || 'The invoice didn\u2019t go.');
     },
   };
 

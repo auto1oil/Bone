@@ -44,6 +44,7 @@ export const FEATURES: Feature[] = [
   // Admin
   { group: 'admin', key: 'admin:/work-orders/orders', label: 'Orders' },
   { group: 'admin', key: 'admin:/work-orders', label: 'Tickets' },
+  { group: 'admin', key: 'admin:/work-orders/invoices', label: 'Invoices' },
   { group: 'admin', key: 'admin:/admin', label: 'Deliveries' },
   { group: 'admin', key: 'admin:/admin/delivery-log', label: 'Delivery Log' },
   { group: 'admin', key: 'admin:/haulers', label: 'Haulers' },
@@ -58,6 +59,7 @@ export const FEATURES: Feature[] = [
   // Office
   { group: 'office', key: 'office:/work-orders/orders', label: 'Orders' },
   { group: 'office', key: 'office:/work-orders', label: 'Tickets' },
+  { group: 'office', key: 'office:/work-orders/invoices', label: 'Invoices' },
   { group: 'office', key: 'office:/haulers', label: 'Haulers' },
   { group: 'office', key: 'office:/driver/customers', label: 'Customers' },
   { group: 'office', key: 'office:/driver/hours', label: 'Hours' },

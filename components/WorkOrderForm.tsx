@@ -714,7 +714,10 @@ export default function WorkOrderForm({
       });
       const json = await res.json();
       if (!json.ok) { setError(json.error || 'Could not record the approval.'); return; }
-      if (json.invoice_error) setMsg(`Approved, but QuickBooks said: ${json.invoice_error}. Retry the invoice from the list.`);
+      if (json.invoice_error) setMsg(`Approved, but the invoice didn\u2019t go: ${json.invoice_error}. Send it from the ticket list.`);
+      else if (json.invoice?.local) setMsg(json.invoice.emailed
+        ? `Invoice ${json.invoice.invoice_number} emailed to ${json.invoice.emailed_to}.`
+        : `Invoice ${json.invoice.invoice_number} created, not emailed. ${json.invoice.email_error || ''} Send it from the Invoices tab.`);
       else if (json.invoice) setMsg(`Approved and invoiced — QuickBooks #${json.invoice.invoice_number}.`);
       else setMsg(reject ? 'Sent back to the crew.' : 'Approved.');
       onSaved?.(json.work_order as WorkOrder);
@@ -870,7 +873,7 @@ export default function WorkOrderForm({
               disabled={!!busy}
               className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50 font-medium"
             >
-              {busy === 'approve' ? 'Approving…' : 'Approve & invoice'}
+              {busy === 'approve' ? 'Sending…' : 'Send Invoice'}
             </button>
             <button
               onClick={() => approve(true)}

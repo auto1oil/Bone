@@ -87,6 +87,25 @@ Check in this order and report which one it was:
     is the full-screen prompt in the crew layouts.
   - **Orders stay open until the office closes them** — the owner's
     exception to the spec. Nothing auto-completes an order; don't add it.
+- Audit and invoicing: the audit queue (`components/AuditQueue.tsx`) opens
+  each ticket as order-on-the-left, haul-ticket-on-the-right, with **Send
+  Invoice**. That is the office approval (`/approve` route, unchanged rules);
+  what invoices is decided by `quickbooksConnected()` in `lib/invoices.ts`:
+  connected → the QuickBooks path as before; not connected → Bone's own
+  invoice (`createTicketInvoice`): a `ticket_invoices` row numbered from
+  `ticket_invoice_seq` (INV-<n>), a PDF (`lib/invoice-pdf.ts`: invoice page +
+  the ticket PDF) in `work-tickets/invoices/`, the ticket set to `invoiced`
+  with `invoice_no`, and an email to `businesses.email` through Resend
+  (`lib/email.ts`; needs `RESEND_API_KEY` and `INVOICE_FROM_EMAIL`). Both
+  paths bill through `resolveTicketBilling` (the order's customer rate, unit
+  and minimum — never a browser number). A failed email never undoes the
+  invoice; a failed invoice never undoes the approval. `ticket_invoices` is
+  written only by the server; office and admin read it. The **Invoices** tab
+  (`app/work-orders/invoices`) lists, opens, re-sends and — admin only,
+  `/api/invoices/[id]/void` — voids. The office may set a customer's billing
+  email through `/api/businesses/[id]/email` (the record is otherwise admin).
+- Order status: Open, Complete, Cancelled. "Active" was folded into Open;
+  the value is still accepted on old rows and reads as Open.
 - Dispatch to Bone's own drivers: the order page's "Send to Bone drivers"
   (`components/AssignDrivers.tsx`) posts to `/api/job-orders/[id]/assign`,
   office/admin only, which makes one draft ticket per driver from the order
@@ -157,7 +176,8 @@ When adding anything to the approval chain:
 "Admin" means `admin` or `master_admin` (`is_admin()`); `office` is not admin.
 Each rule is enforced server-side (route check and/or RLS), never only in UI:
 
-- **Invoices**: edit, void, re-attach PDFs — admin-only QuickBooks routes.
+- **Invoices**: edit, void, re-attach PDFs — admin-only QuickBooks routes;
+  voiding one of Bone's own invoices is admin only too.
   Field staff may update an `orders` row only in its delivery columns
   (`guard_order_columns` trigger); everything else on an order is admin.
 - **Tickets**: office reviews, edits, approves, invoices; **deleting** a

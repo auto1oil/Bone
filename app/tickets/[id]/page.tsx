@@ -42,6 +42,11 @@ export default function TicketDetailPage({ params }: { params: { id: string } })
           Sent back: {wo.rejected_reason}
         </p>
       )}
+      {wo.invoice_no && (
+        <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2 mb-3">
+          Invoiced as INV-{wo.invoice_no}.
+        </p>
+      )}
       {wo.qb_invoice_number && (
         <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2 mb-3">
           Invoiced in QuickBooks as #{wo.qb_invoice_number}.

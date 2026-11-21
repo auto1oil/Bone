@@ -26,7 +26,7 @@ export default function CustomerPicker({
   const supabase = createClient();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ name: '', phone: '', address: '' });
+  const [draft, setDraft] = useState({ name: '', phone: '', address: '', email: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -48,7 +48,7 @@ export default function CustomerPicker({
     const existing = customers.find((c) => c.name.trim().toLowerCase() === name.toLowerCase());
     if (existing) {
       setBusy(false); setAdding(false);
-      setDraft({ name: '', phone: '', address: '' });
+      setDraft({ name: '', phone: '', address: '', email: '' });
       onChange(existing.id);
       return;
     }
@@ -59,6 +59,8 @@ export default function CustomerPicker({
         name,
         phone: draft.phone.trim() || null,
         address: draft.address.trim() || null,
+        // Where this customer's invoices are emailed.
+        email: draft.email.trim() || null,
       })
       .select('id, name, qb_customer_id')
       .single();
@@ -67,7 +69,7 @@ export default function CustomerPicker({
 
     setCustomers((cs) => [...cs, data as Customer].sort((a, b) => a.name.localeCompare(b.name)));
     onChange((data as Customer).id);
-    setDraft({ name: '', phone: '', address: '' });
+    setDraft({ name: '', phone: '', address: '', email: '' });
     setAdding(false);
   }
 
@@ -121,6 +123,10 @@ export default function CustomerPicker({
             <label className="sm:col-span-2">
               <span className={lbl}>Address</span>
               <input value={draft.address} onChange={(e) => setDraft({ ...draft, address: e.target.value })} className={input} />
+            </label>
+            <label className="sm:col-span-3">
+              <span className={lbl}>Billing email (invoices are sent here)</span>
+              <input type="email" inputMode="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} placeholder="billing@customer.com" className={input} />
             </label>
           </div>
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}

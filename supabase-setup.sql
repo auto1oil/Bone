@@ -3366,3 +3366,65 @@ create policy "fleet files write" on storage.objects for insert to authenticated
 drop policy if exists "fleet files delete" on storage.objects;
 create policy "fleet files delete" on storage.objects for delete to authenticated
   using (bucket_id = 'fleet-docs' and (public.is_admin() or public.has_role(array['office'])));
+
+
+-- ==========================================================================
+-- 51. Invoices — Bone's own, for when QuickBooks isn't connected
+-- ==========================================================================
+-- "Send Invoice" at the end of the audit raises one of these: a numbered
+-- invoice (INV-<n>) for one haul ticket, with a PDF (the invoice page, then
+-- the ticket and its BOL photos), emailed to the customer. Rows are written
+-- only by the server (service role) so a number can't be skipped or reused
+-- from a browser; office and admin read them. Voiding is admin only.
+
+-- Where a customer's invoices are emailed.
+alter table public.businesses add column if not exists email text;
+
+create sequence if not exists public.ticket_invoice_seq start 1001;
+
+create table if not exists public.ticket_invoices (
+  id             uuid primary key default gen_random_uuid(),
+  invoice_no     bigint not null unique default nextval('public.ticket_invoice_seq'),
+  work_order_id  uuid references public.work_orders(id) on delete set null,
+  order_id       uuid references public.job_orders(id) on delete set null,
+  business_id    uuid references public.businesses(id) on delete set null,
+  -- Frozen at the moment of invoicing, so the invoice reads the same after
+  -- the customer, the job or the ticket is edited.
+  customer_name  text,
+  customer_address text,
+  job_name       text,
+  job_number     text,
+  ticket_label   text,
+  job_date       date,
+  description    text,
+  quantity       numeric(12,2) not null default 0,
+  unit           text,
+  rate           numeric(12,2) not null default 0,
+  amount         numeric(12,2) not null default 0,
+  issued_on      date not null default current_date,
+  due_on         date,
+  pdf_path       text,
+  -- The send: who it went to, when, or why it didn't.
+  emailed_to     text,
+  emailed_at     timestamptz,
+  email_error    text,
+  status         text not null default 'open' check (status in ('open', 'void')),
+  voided_at      timestamptz,
+  voided_by      uuid references public.profiles(id) on delete set null,
+  void_reason    text,
+  created_by     uuid references public.profiles(id) on delete set null,
+  created_at     timestamptz not null default now()
+);
+create index if not exists ticket_invoices_issued_idx on public.ticket_invoices (issued_on desc, invoice_no desc);
+-- One live invoice per ticket; a voided one doesn't block the next.
+create unique index if not exists ticket_invoices_one_live
+  on public.ticket_invoices (work_order_id) where status = 'open';
+
+-- The ticket remembers its invoice number for the lists.
+alter table public.work_orders add column if not exists invoice_no bigint;
+
+grant select on public.ticket_invoices to authenticated;
+alter table public.ticket_invoices enable row level security;
+drop policy if exists "ticket invoices read" on public.ticket_invoices;
+create policy "ticket invoices read" on public.ticket_invoices for select to authenticated
+  using (public.is_admin() or public.has_role(array['office']));
