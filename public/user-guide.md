@@ -260,12 +260,22 @@ Tickets tab. The bell shows how many are waiting.
   11 PM, and at 6 the next morning.
 - **Place check.** Every load stamp carries the phone's GPS fix, and the app
   measures each one against the job's load address (the pit) and unload
-  address (the site) from the order. A stamp more than about half a mile
-  from where it should be flags the ticket with the distance; so does a day
-  with no GPS on any stamp. The verify panel lists every stamp with a map
-  link for where the truck was and where it should have been. Keep the load
-  and unload addresses filled in on the order, or there is nothing to check
-  against.
+  address (the site) from the order. A stamp more than 1,000 feet from
+  where it should be flags the ticket with the distance; so does a day with
+  no GPS on any stamp. The phone's own GPS error is allowed on top of the
+  1,000 feet. The verify panel lists every stamp with a map link for where
+  the truck was, and the Pit and Site links open the exact spot the check
+  measured from. Keep the load and unload addresses filled in on the order,
+  or there is nothing to check against.
+  - **Use a pin for a pit or a big site.** A street address lands on the
+    road or the gate, which can be well over 1,000 feet from where trucks
+    actually load. In Google Maps or Apple Maps, press and hold on the
+    loading spot to drop a pin, tap Share, and paste the link into the
+    order's Load or Unload address. The app reads the pin's exact location.
+    Typing the coordinates (40.4616, -111.8956) works too.
+  - **Change the distance**: an admin sets it on Tickets, Setup, under
+    Place check distance. A ticket already checked keeps its old result
+    until its next stamp or until you tap **Re-check** in the audit.
 - **All tickets** filters by stage: Waiting on office, Approved, Funds
   approved, Invoiced, Sent back, Drafts.
 - **Open a ticket** to fix anything that's off, then press Send Invoice or

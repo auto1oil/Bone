@@ -152,12 +152,18 @@ Check in this order and report which one it was:
   `docs/funding-app-progress-spec.md`.
 - Place check: `runPlaceCheck` in `lib/place-check.ts` measures every load
   stamp's GPS fix against the job's pit (order `pickup_address`) and site
-  (`dropoff_address` or `job_address`), within `PLACE_RADIUS_M` (800 m,
-  overridable via app_settings `place_check_radius_m`), and stores the result
+  (`dropoff_address` or `job_address`), within 1,000 feet (the owner's
+  number; `lib/place-radius.ts`, changed by an admin on Tickets > Setup,
+  which stores app_settings `place_check_radius_m` in metres; shown in feet
+  via `lib/distance.ts`), and stores the result
   in `work_orders.place_check`. Runs after each stamp and each save; the audit
   flags any `off` stamp and any ticket with no fixes. Addresses are geocoded
   once into `geocode_cache` by `lib/geocode.ts` (Nominatim, then US Census;
-  keyless). It never blocks a save, submit or approval.
+  keyless). A pasted map pin link is read for its coordinates
+  (`resolveMapLink`): redirects are followed by hand and only across the
+  `MAP_HOSTS` allowlist, because a pit address can be typed by any ticket
+  filer — keep that list closed, and don't read the page body (Google's
+  default map is centred on Kansas). It never blocks a save, submit or approval.
 - Fleet tab (`app/fleet`): Bone's own fleet program, built in-app with its
   own tables (`fleet_vehicles`, `fleet_trips`, `fleet_fuel`,
   `fleet_maintenance`, `fleet_documents`; files in the `fleet-docs` bucket).

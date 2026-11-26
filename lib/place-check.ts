@@ -18,12 +18,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { resolvePlace, distanceM, type Place } from '@/lib/geocode';
 import type { WorkOrder, WorkOrderLoad } from '@/lib/work-orders';
+import { fmtDistance } from '@/lib/distance';
+import { PLACE_RADIUS_FT, PLACE_RADIUS_M } from '@/lib/place-radius';
 
-// How far from the pit or the site a stamp may be and still count as there.
-// Pits and sites are big — a quarry face can be a kilometre from its gate —
-// and phone fixes wander. Overridable per app with app_settings
-// place_check_radius_m.
-export const PLACE_RADIUS_M = 800;
+// The tolerance (1,000 feet unless an admin set another on Tickets > Setup)
+// is in lib/place-radius.ts. The phone's own error margin is added on top,
+// in the driver's favour.
+export { PLACE_RADIUS_FT, PLACE_RADIUS_M };
 
 export type StampKey = 'load_in' | 'load_out' | 'unload_in' | 'unload_out';
 export type StampVerdict = 'ok' | 'off' | 'nofix' | 'unchecked';
@@ -62,10 +63,6 @@ const STAMPS: { key: StampKey; expected: 'pit' | 'site' }[] = [
   { key: 'unload_in', expected: 'site' },
   { key: 'unload_out', expected: 'site' },
 ];
-
-function fmtKm(m: number): string {
-  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
-}
 
 // Pure: given the places and the loads, decide. Exported for tests.
 export function checkStamps(
@@ -106,7 +103,7 @@ export function checkStamps(
   let flag: string | null = null;
   if (off > 0) {
     const worst = stamps.filter((x) => x.verdict === 'off').sort((a, b) => (b.distance_m || 0) - (a.distance_m || 0))[0];
-    flag = `${off} of ${checked} load stamps were not at the job's ${worst.expected} — load ${worst.load_no} ${worst.key.replace('_', ' ')} was ${fmtKm(worst.distance_m || 0)} away`;
+    flag = `${off} of ${checked} load stamps were not at the job's ${worst.expected} — load ${worst.load_no} ${worst.key.replace('_', ' ')} was ${fmtDistance(worst.distance_m || 0)} away`;
   } else if (stamps.length > 0 && checked === 0 && unchecked === 0) {
     flag = 'no GPS fix on any load stamp — where the truck was is unknown';
   } else if (stamps.length > 0 && checked === 0 && unchecked > 0) {

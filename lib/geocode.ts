@@ -19,7 +19,7 @@ export type Place = {
   // What the geocoder understood the address as — shown to the office so a
   // wrong match ("Main St" in the wrong town) is visible, not silent.
   label: string;
-  provider: 'nominatim' | 'census' | 'coordinates';
+  provider: 'nominatim' | 'census' | 'coordinates' | 'maplink';
 };
 
 // Same address, same key: case, spacing and trailing punctuation don't count.
@@ -75,12 +75,109 @@ export function parseCoordinates(text: string): { lat: number; lng: number } | n
   return { lat, lng };
 }
 
-// Geocode with no cache — exported for tests and one-off tools.
-export async function geocodeAddress(address: string): Promise<Place | null> {
-  const a = address.trim();
-  if (!a) return null;
-  const coords = parseCoordinates(a);
-  if (coords) return { ...coords, label: `${coords.lat}, ${coords.lng}`, provider: 'coordinates' };
+// ---- A pasted map pin ------------------------------------------------
+// The office often drops a pin and pastes the share link instead of typing
+// an address. A pin is the most exact place there is, so the link is read
+// for its coordinates rather than treated as an address nobody can find.
+
+// The only hosts a link is ever followed to. A pit address can be typed by
+// anyone who files a ticket, so the server must not fetch whatever it is
+// handed.
+const MAP_HOSTS = new Set([
+  'maps.app.goo.gl', 'goo.gl', 'g.co',
+  'google.com', 'www.google.com', 'maps.google.com',
+  'maps.apple.com', 'maps.apple',
+]);
+
+export function isMapLink(text: string): boolean {
+  const t = text.trim();
+  if (!/^https:\/\/\S+$/i.test(t)) return false;
+  try { return MAP_HOSTS.has(new URL(t).hostname.toLowerCase()); } catch { return false; }
+}
+
+function validPoint(lat: number, lng: number): { lat: number; lng: number } | null {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180 || (lat === 0 && lng === 0)) return null;
+  return { lat, lng };
+}
+
+// The point a map URL (or a page that embeds one) is about. The pin itself
+// (!3d…!4d…, q=, ll=) is preferred over @…, which is only where the screen
+// happened to be centred.
+export function coordinatesInMapUrl(raw: string): { lat: number; lng: number } | null {
+  let text = raw;
+  try { text = decodeURIComponent(raw); } catch { /* keep it as it came */ }
+  const n = '(-?\\d{1,3}\\.\\d{3,})';
+  const patterns = [
+    new RegExp(`!3d${n}!4d${n}`),
+    new RegExp(`[?&](?:q|query|ll|sll|daddr|destination|center|coordinate|markers)=(?:loc:)?${n},\\+?\\s*${n}`),
+    new RegExp(`/(?:place|search|dir)/${n},\\+?\\s*${n}`),
+    new RegExp(`@${n},${n}`),
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    const p = m ? validPoint(Number(m[1]), Number(m[2])) : null;
+    if (p) return p;
+  }
+  return null;
+}
+
+// The words a map link names its place with, when it carries no point:
+// ?q=Staker+Parson+Pit or /place/Staker+Parson+Pit/.
+function placeTextInMapUrl(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    const q = u.searchParams.get('q') || u.searchParams.get('query') || u.searchParams.get('address');
+    const fromPath = u.pathname.match(/\/(?:place|search)\/([^/@]+)/)?.[1];
+    const words = (q || (fromPath ? decodeURIComponent(fromPath) : '')).replace(/\+/g, ' ').trim();
+    return words && !/^https?:/i.test(words) ? words : null;
+  } catch {
+    return null;
+  }
+}
+
+// Follow a map link to where it leads, staying on the map hosts, and read
+// the point off it. Short links (maps.app.goo.gl/…) say nothing themselves;
+// the place is in what they redirect to.
+export async function resolveMapLink(link: string): Promise<Place | null> {
+  let url = link.trim();
+  let words: string | null = null;
+  for (let hop = 0; hop < 6; hop++) {
+    if (!isMapLink(url)) break;
+    const direct = coordinatesInMapUrl(url);
+    if (direct) return { ...direct, label: `Map pin ${direct.lat.toFixed(5)}, ${direct.lng.toFixed(5)}`, provider: 'maplink' };
+    words = placeTextInMapUrl(url) || words;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8_000);
+    let res: Response;
+    try {
+      res = await fetch(url, { redirect: 'manual', headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BoneFieldTickets/1.0)', Accept: 'text/html' }, signal: controller.signal });
+    } catch {
+      break;
+    } finally {
+      clearTimeout(timer);
+    }
+    const next = res.headers.get('location');
+    if (res.status >= 300 && res.status < 400 && next) {
+      try { url = new URL(next, url).toString(); } catch { break; }
+      continue;
+    }
+    // The end of the line. The page itself is not read: without a point in
+    // its address Google serves a map centred on the middle of the country,
+    // which would put the pit in Kansas.
+    break;
+  }
+  // No point anywhere, but the link named the place: look that up instead.
+  if (words) {
+    const typed = parseCoordinates(words);
+    if (typed) return { ...typed, label: `Map pin ${typed.lat}, ${typed.lng}`, provider: 'maplink' };
+    return geocodePlaceWords(words);
+  }
+  return null;
+}
+
+async function geocodeText(a: string): Promise<Place | null> {
   try {
     const first = await nominatim(a);
     if (first) return first;
@@ -90,6 +187,27 @@ export async function geocodeAddress(address: string): Promise<Place | null> {
   } catch {
     return null;
   }
+}
+
+// What a shared place link names: "Staker Parson, 123 S Main St, Lehi, UT".
+// The business name in front often defeats a geocoder that would find the
+// street address behind it, so that is tried second.
+async function geocodePlaceWords(words: string): Promise<Place | null> {
+  const whole = await geocodeText(words);
+  if (whole) return whole;
+  const rest = words.includes(',') ? words.slice(words.indexOf(',') + 1).trim() : '';
+  return /\d/.test(rest) ? geocodeText(rest) : null;
+}
+
+// Geocode with no cache — exported for tests and one-off tools.
+export async function geocodeAddress(address: string): Promise<Place | null> {
+  const a = address.trim();
+  if (!a) return null;
+  const coords = parseCoordinates(a);
+  if (coords) return { ...coords, label: `${coords.lat}, ${coords.lng}`, provider: 'coordinates' };
+  // A link is a pin or nothing — its text is never searched as an address.
+  if (/^https?:\/\//i.test(a)) return isMapLink(a) ? resolveMapLink(a) : null;
+  return geocodeText(a);
 }
 
 // The cached lookup the place check uses. A miss that geocodes to nothing is
@@ -110,8 +228,10 @@ export async function resolvePlace(db: SupabaseClient, address: string | null | 
     if (row.lat != null && row.lng != null) {
       return { lat: Number(row.lat), lng: Number(row.lng), label: row.label || a, provider: (row.provider as Place['provider']) || 'nominatim' };
     }
+    // A map link that led nowhere is tried again sooner: the miss is more
+    // likely a slow redirect than a bad pin.
     const ageMs = Date.now() - new Date(row.geocoded_at).getTime();
-    if (ageMs < 24 * 3600 * 1000) return null;
+    if (ageMs < (isMapLink(a) ? 10 * 60 * 1000 : 24 * 3600 * 1000)) return null;
   }
 
   const place = await geocodeAddress(a);

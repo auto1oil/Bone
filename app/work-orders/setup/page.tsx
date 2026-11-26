@@ -1,5 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { PLACE_RADIUS_FT } from '@/lib/place-radius';
+import { fromFeet, toFeet } from '@/lib/distance';
 import AdminSubNav from '@/components/AdminSubNav';
 import { createClient } from '@/lib/supabase-browser';
 
@@ -35,6 +37,9 @@ export default function WorkOrderSetupPage() {
   // Master admin only — it's a credential, and RLS enforces the same line.
   const [isMaster, setIsMaster] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  // How close a load stamp has to be to the pit or the site, in feet.
+  const [placeFeet, setPlaceFeet] = useState(String(PLACE_RADIUS_FT));
+  const [savedPlace, setSavedPlace] = useState('');
   const [factorUrl, setFactorUrl] = useState('');
   const [factorKey, setFactorKey] = useState('');
   const [savedFactor, setSavedFactor] = useState(false);
@@ -49,11 +54,13 @@ export default function WorkOrderSetupPage() {
       const { data } = await supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['work_order_qb_item_id', 'work_order_qb_item_name', 'factoring_webhook_url', 'factoring_api_key']);
+        .in('key', ['work_order_qb_item_id', 'work_order_qb_item_name', 'factoring_webhook_url', 'factoring_api_key', 'place_check_radius_m']);
       const m = new Map(((data as { key: string; value: string }[]) || []).map((r) => [r.key, r.value]));
       setItemId(m.get('work_order_qb_item_id') || '');
       setItemName(m.get('work_order_qb_item_name') || '');
       setFactorUrl(m.get('factoring_webhook_url') || '');
+      const savedRadius = Number(m.get('place_check_radius_m'));
+      if (Number.isFinite(savedRadius) && savedRadius > 0) setPlaceFeet(String(Math.round(toFeet(savedRadius))));
       setFactorKey(m.get('factoring_api_key') || '');
       setFactorUrlSaved(!!(m.get('factoring_webhook_url') || '').trim());
       const { data: { user } } = await supabase.auth.getUser();
@@ -95,6 +102,16 @@ export default function WorkOrderSetupPage() {
     ], { onConflict: 'key' });
     setSavedItem(true);
     setTimeout(() => setSavedItem(false), 1500);
+  }
+
+  // Stored in metres, typed in feet. Admin only — RLS says the same.
+  async function savePlaceRadius() {
+    const ft = Number(placeFeet);
+    if (!Number.isFinite(ft) || ft < 100 || ft > 26400) { setSavedPlace('Enter a distance between 100 and 26,400 feet (5 miles).'); return; }
+    const { error } = await supabase.from('app_settings')
+      .upsert([{ key: 'place_check_radius_m', value: String(Math.round(fromFeet(ft) * 10) / 10) }], { onConflict: 'key' });
+    setSavedPlace(error ? 'Could not save that.' : 'Saved ✓ New stamps and re-checks use it.');
+    if (!error) setTimeout(() => setSavedPlace(''), 4000);
   }
 
   async function saveFactoring() {
@@ -177,6 +194,24 @@ export default function WorkOrderSetupPage() {
         {itemId && <p className="text-xs text-gray-500 mt-2">Billing as <strong>{itemName || itemId}</strong>.</p>}
         {savedItem && <p className="text-xs text-emerald-700 mt-1">Saved ✓</p>}
       </div>
+
+      {isAdmin && (
+        <div className="bg-white border border-gray-200 rounded-lg p-4 mb-5">
+          <h2 className="font-semibold mb-1">Place check distance</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            How close a load stamp has to be to the job&apos;s load or unload location to count as there. A stamp farther
+            away flags the ticket in the audit. Smaller catches more; larger flags less. The phone&apos;s own GPS error is
+            always allowed on top.
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input type="number" inputMode="numeric" min={100} step={50} value={placeFeet}
+              onChange={(e) => setPlaceFeet(e.target.value)} className={`${input} w-28`} />
+            <span className="text-sm text-gray-600">feet</span>
+            <button onClick={savePlaceRadius} className="px-3 py-1.5 text-sm bg-brand-700 text-white rounded-md hover:bg-brand-900">Save</button>
+          </div>
+          {savedPlace && <p className={`text-xs mt-2 ${savedPlace.startsWith('Saved') ? 'text-emerald-700' : 'text-red-600'}`}>{savedPlace}</p>}
+        </div>
+      )}
 
       {isMaster && (
       <div className="bg-white border border-gray-200 rounded-lg p-4 mb-5">

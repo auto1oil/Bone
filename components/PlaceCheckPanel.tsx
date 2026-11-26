@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import type { PlaceCheck, StampCheck } from '@/lib/place-check';
+import { fmtDistance, toFeet } from '@/lib/distance';
 
 // Where the truck was, stamp by stamp, against where the job said it should
 // be. Green when inside the tolerance, red when not, grey when the phone gave
@@ -9,13 +10,13 @@ import type { PlaceCheck, StampCheck } from '@/lib/place-check';
 const LABEL: Record<StampCheck['key'], string> = {
   load_in: 'Load in', load_out: 'Load out', unload_in: 'Unload in', unload_out: 'Unload out',
 };
-const fmtKm = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
 const fmtClock = (iso: string) => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 };
 const mapAt = (lat: number, lng: number) => `https://maps.google.com/?q=${lat},${lng}`;
-const mapAddr = (a: string) => `https://maps.google.com/?q=${encodeURIComponent(a)}`;
+// A pasted map link reads as "Map pin", not as a line of URL.
+const placeName = (a: string) => (/^https?:\/\//i.test(a.trim()) ? 'Map pin' : a);
 
 export default function PlaceCheckPanel({
   workOrderId, check, canRecheck = false, onChange, compact = false,
@@ -76,7 +77,7 @@ export default function PlaceCheckPanel({
     <div className={`rounded-md border p-3 text-xs ${tone}`}>
       <div className="flex items-start justify-between gap-2 flex-wrap">
         <p className="font-semibold text-gray-900 text-sm">Place check</p>
-        <span className="text-gray-500">within {fmtKm(check.radius_m)} · {new Date(check.checked_at).toLocaleString()}</span>
+        <span className="text-gray-500">within {fmtDistance(check.radius_m)} · {new Date(check.checked_at).toLocaleString()}</span>
       </div>
       <p className={`mt-1 font-medium ${check.off > 0 ? 'text-red-700' : check.flag ? 'text-amber-800' : 'text-emerald-800'}`}>{headline}</p>
 
@@ -84,14 +85,14 @@ export default function PlaceCheckPanel({
         <div>
           <span className="text-gray-500">Pit: </span>
           {check.pit.lat != null && check.pit.address
-            ? <a href={mapAddr(check.pit.address)} target="_blank" rel="noopener noreferrer" className={link} title={check.pit.label || ''}>{check.pit.address}</a>
-            : <span className="text-gray-500">{check.pit.address ? `${check.pit.address} (couldn't be placed on the map)` : 'no load address on the job'}</span>}
+            ? <a href={mapAt(check.pit.lat, check.pit.lng)} target="_blank" rel="noopener noreferrer" className={`${link} [overflow-wrap:anywhere]`} title={`Where the check put it: ${check.pit.label || ''}`}>{placeName(check.pit.address)}</a>
+            : <span className="text-gray-500 [overflow-wrap:anywhere]">{check.pit.address ? `${placeName(check.pit.address)} (couldn't be placed on the map)` : 'no load address on the job'}</span>}
         </div>
         <div>
           <span className="text-gray-500">Site: </span>
           {check.site.lat != null && check.site.address
-            ? <a href={mapAddr(check.site.address)} target="_blank" rel="noopener noreferrer" className={link} title={check.site.label || ''}>{check.site.address}</a>
-            : <span className="text-gray-500">{check.site.address ? `${check.site.address} (couldn't be placed on the map)` : 'no unload address on the job'}</span>}
+            ? <a href={mapAt(check.site.lat, check.site.lng)} target="_blank" rel="noopener noreferrer" className={`${link} [overflow-wrap:anywhere]`} title={`Where the check put it: ${check.site.label || ''}`}>{placeName(check.site.address)}</a>
+            : <span className="text-gray-500 [overflow-wrap:anywhere]">{check.site.address ? `${placeName(check.site.address)} (couldn't be placed on the map)` : 'no unload address on the job'}</span>}
         </div>
       </div>
 
@@ -113,11 +114,11 @@ export default function PlaceCheckPanel({
                 <td className="pr-2 py-0.5">{LABEL[s.key]}</td>
                 <td className="pr-2 py-0.5 tabular-nums">{fmtClock(s.at)}</td>
                 <td className="pr-2 py-0.5">
-                  {s.verdict === 'ok' && `${fmtKm(s.distance_m || 0)} from the ${s.expected} ✓`}
-                  {s.verdict === 'off' && `${fmtKm(s.distance_m || 0)} from the ${s.expected} ✗`}
+                  {s.verdict === 'ok' && `${fmtDistance(s.distance_m || 0)} from the ${s.expected} ✓`}
+                  {s.verdict === 'off' && `${fmtDistance(s.distance_m || 0)} from the ${s.expected} ✗`}
                   {s.verdict === 'nofix' && 'no GPS fix'}
                   {s.verdict === 'unchecked' && `no ${s.expected} address to check against`}
-                  {s.accuracy_m != null && s.verdict !== 'nofix' && <span className="text-gray-400"> (±{Math.round(s.accuracy_m)} m)</span>}
+                  {s.accuracy_m != null && s.verdict !== 'nofix' && <span className="text-gray-400"> (±{Math.round(toFeet(s.accuracy_m))} ft)</span>}
                 </td>
                 <td className="py-0.5">
                   {s.lat != null && s.lng != null && (
