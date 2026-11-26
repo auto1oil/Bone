@@ -15,6 +15,7 @@
 
 import { PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, rgb } from 'pdf-lib';
 import { BRAND } from '@/lib/brand';
+import { brandLogoPng, BRAND_LOGO_WIDTH, BRAND_LOGO_HEIGHT } from '@/lib/brand-logo';
 import { ticketFormat } from '@/lib/ticket-formats';
 import { drawCustomerForm } from '@/lib/ticket-forms';
 import { safe } from '@/lib/ticket-forms/kit';
@@ -149,7 +150,15 @@ async function drawBoneTicket(
   }
 
   // ---- Header (outside the box, like the paper) ----
-  centered(BRAND.name.toUpperCase(), 736, 40, serif);
+  // The logo, where the pad prints the name. If it can't be drawn the name
+  // is printed in its place.
+  try {
+    const logo = await doc.embedPng(brandLogoPng());
+    const w = 172; const h = (w * BRAND_LOGO_HEIGHT) / BRAND_LOGO_WIDTH;
+    page.drawImage(logo, { x: (612 - w) / 2, y: 733, width: w, height: h });
+  } catch {
+    centered(BRAND.name.toUpperCase(), 736, 40, serif);
+  }
   centered(BRAND.addressLines.join('  ').toUpperCase(), 722, 8, bold);
   centered(`${BRAND.contactName} - ${BRAND.phone}`.toUpperCase(), 712, 8, bold);
   centered(`EMAIL: ${BRAND.officeEmail}`.toUpperCase(), 702, 8, bold);

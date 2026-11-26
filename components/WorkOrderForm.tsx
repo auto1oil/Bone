@@ -941,7 +941,12 @@ export default function WorkOrderForm({
       <div className="bg-white border-2 border-brand-700 rounded-xl p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-2xl font-black tracking-tight">{BRAND.name}</div>
+            {ticketForm === 'bone' ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src="/brand/bone-logo.png" alt={BRAND.name} className="h-8 w-auto mb-1" />
+            ) : (
+              <div className="text-xl font-black tracking-tight leading-tight">{ticketFormatInfo(ticketForm).label}</div>
+            )}
             <div className="text-[11px] text-gray-500">{BRAND.legalName} · {BRAND.addressLines.join(', ')} · {BRAND.phone}</div>
           </div>
           <div className="text-right">

@@ -57,7 +57,7 @@ export default function LoginPage() {
           <img
             src="/brand/bone-logo.png"
             alt="Bone"
-            className="h-16 w-auto mx-auto mb-3"
+            className="w-full max-w-[240px] h-auto mx-auto mb-3"
           />
           <p className="text-sm text-gray-500">
             {mode === 'forgot' ? 'Reset password' : 'Sign in'}

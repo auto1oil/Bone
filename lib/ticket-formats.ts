@@ -13,6 +13,7 @@ export const TICKET_FORMATS = [
   { key: 'whitaker', label: 'Whitaker Construction', title: 'Whitaker Construction · Driver Time Sheet / Load Count' },
   { key: 'uhb', label: 'Utah Home Building Company', title: 'Utah Home Building Company' },
   { key: 'osm', label: 'One Source Materials', title: 'One Source Materials · Truck Tickets' },
+  { key: 'sunroc', label: 'Sunroc', title: 'Sunroc · Lease Truck Time Card' },
 ] as const;
 
 export type TicketFormatKey = (typeof TICKET_FORMATS)[number]['key'];

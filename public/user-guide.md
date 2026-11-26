@@ -164,7 +164,8 @@ Orders tab, then Create order, top right.
 - FSR, fuel surcharge, tonnage and type, equipment type, unit, status, notes.
 - **Ticket form for this job.** Leave it on Bone Trucking, or pick the
   customer's own form: Custom Trucking & Transportation, Arise Trucking,
-  Whitaker Construction, Utah Home Building or One Source Materials. Every
+  Whitaker Construction, Utah Home Building, One Source Materials or
+  Sunroc. Every
   ticket on the job then prints on that form (below, under Ticket forms).
 - **An order stays open until you close it.** Change its status to Complete
   when the job is done; nothing closes it for you.
@@ -327,6 +328,7 @@ out like that company's paper pad with its name at the top:
 | Whitaker Construction | 31 |
 | Utah Home Building Company | 20 |
 | One Source Materials | 25 |
+| Sunroc (Lease Truck Time Card) | 17 |
 
 - **Set it on the order** and every ticket on that job uses it. The driver
   can also pick it at the top of the ticket (**Ticket form**), and the
@@ -430,8 +432,9 @@ right) and allow them when the phone asks.
 **Customer's own form.** Some customers want the day on their ticket, not
 Bone's. If the office set it on the job it's already chosen. If not, pick it
 under **Ticket form** at the top of the ticket: Custom Trucking, Arise,
-Whitaker, Utah Home Building or One Source Materials. You fill the ticket
-out exactly the same way; **Ticket PDF** prints it on that company's form.
+Whitaker, Utah Home Building, One Source Materials or Sunroc. You fill the
+ticket out exactly the same way; **Ticket PDF** prints it on that company's
+form.
 
 **Paper ticket instead.** If you ran a paper ticket that day, tap **Running a
 paper ticket today? Upload a photo of it instead**, on the start screen or

@@ -26,7 +26,7 @@ export default function MarketingNav() {
       <div className="max-w-5xl mx-auto px-4 flex items-center justify-between gap-3 py-3">
         <Link href="/home" className="shrink-0 inline-flex items-center" aria-label="Bone — Home">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/bone-logo.png" alt="Bone" className="h-9 w-auto" />
+          <img src="/brand/bone-logo.png" alt="Bone" className="h-7 sm:h-9 w-auto" />
         </Link>
         <nav className="flex items-center gap-1 flex-wrap justify-end">
           {link('/home', 'Home')}

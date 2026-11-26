@@ -196,7 +196,7 @@ export default function NavBar({ role, email }: { role: Role; email: string }) {
             <img
               src="/brand/bone-logo.png"
               alt="Bone"
-              className="h-9 w-auto"
+              className="h-7 sm:h-9 w-auto"
             />
           </Link>
           <div className="flex items-center gap-3 shrink-0">

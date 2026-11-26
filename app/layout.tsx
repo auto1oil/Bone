@@ -20,9 +20,9 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
   },
   icons: {
-    // The tab icon is the horse on its own. The home-screen icon is the
-    // solid one — a phone crops that to a circle, which a bare silhouette
-    // does not survive.
+    // Both are the skull from the logo's O. The tab icon is it on its own;
+    // the home-screen icon sits it on a solid square with room around it,
+    // because a phone crops that to a circle.
     icon: '/brand/bone-mark.png',
     apple: '/brand/bone-icon.png',
   },

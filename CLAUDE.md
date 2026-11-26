@@ -39,7 +39,11 @@ Check in this order and report which one it was:
   own QuickBooks; the funding app is the only shared service and this app's
   identity there is `BRAND.slug` in `lib/brand.ts`.
 - `lib/brand.ts` — the company's name, legal name, address, phone, email,
-  domain and funding `source`. Nothing else carries identity.
+  domain and funding `source`. Nothing else carries identity, except the
+  logo: `public/brand/bone-logo.png` (screens), `bone-mark.png` (tab icon),
+  `bone-icon.png` (home-screen icon) and `lib/brand-logo.ts` (the same logo
+  inlined as a PNG for the ticket and invoice PDFs). Replace all four
+  together.
 - `lib/truck-types.ts` — the TYPE OF TRUCK list from the Bone paper pad and
   the 28-load-line limit (two columns of fourteen).
 - `lib/ticket-pdf.ts` — the haul ticket PDF, laid out to mirror the Bone pad.
@@ -80,8 +84,8 @@ Check in this order and report which one it was:
     "Load N – Ticket #…" (or the paper photos, one a page).
   - **Ticket forms** (`lib/ticket-formats.ts`, `lib/ticket-forms/`): a
     ticket prints on Bone's own layout or on a customer's form
-    (`work_orders.ticket_format`: custom_trucking, arise, whitaker, uhb, osm;
-    null = Bone). The order names the job's form (`job_orders.ticket_format`)
+    (`work_orders.ticket_format`: custom_trucking, arise, whitaker, uhb, osm,
+    sunroc; null = Bone). The order names the job's form (`job_orders.ticket_format`)
     and it flows to the ticket on create, job pick and dispatch; the driver
     or office can change it. Each form is one file exporting `ROWS` and
     `draw(pen, data)` over the shared `kit.ts`; `drawCustomerForm` builds the

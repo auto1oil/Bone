@@ -3,6 +3,7 @@
 
 import { PDFDocument, PDFFont, StandardFonts, rgb } from 'pdf-lib';
 import { BRAND } from '@/lib/brand';
+import { brandLogoPng, BRAND_LOGO_WIDTH, BRAND_LOGO_HEIGHT } from '@/lib/brand-logo';
 
 export type InvoiceForPdf = {
   invoice_no: number;
@@ -74,7 +75,13 @@ export async function buildInvoicePdf(inv: InvoiceForPdf, ticketPdf?: Uint8Array
   const rule = (y: number, w = 0.8, color = RULE) => page.drawLine({ start: { x: L, y }, end: { x: R, y }, thickness: w, color });
 
   // Who it's from, and what it is.
-  text(BRAND.name.toUpperCase(), L, 728, 34, serif);
+  try {
+    const logo = await doc.embedPng(brandLogoPng());
+    const w = 150;
+    page.drawImage(logo, { x: L, y: 727, width: w, height: (w * BRAND_LOGO_HEIGHT) / BRAND_LOGO_WIDTH });
+  } catch {
+    text(BRAND.name.toUpperCase(), L, 728, 34, serif);
+  }
   let y = 712;
   for (const line of [BRAND.legalName, ...BRAND.addressLines, `${BRAND.contactName} · ${BRAND.phone}`, BRAND.officeEmail]) {
     text(line, L, y, 9, font, DIM); y -= 12;

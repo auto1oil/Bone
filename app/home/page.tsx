@@ -15,7 +15,7 @@ export default function HomePage() {
       <section className="bg-brand-900 text-white">
         <div className="max-w-5xl mx-auto px-4 py-16 text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/bone-logo.png" alt="Bone" className="h-16 w-auto mx-auto mb-6 bg-white px-4 py-3 rounded-lg" />
+          <img src="/brand/bone-logo.png" alt="Bone" className="w-full max-w-[300px] h-auto mx-auto mb-6 bg-white px-5 py-4 rounded-lg" />
           <h1 className="sr-only">Bone</h1>
           <p className="mt-3 text-brand-50 max-w-2xl mx-auto">
             {/* TODO(content): the real one-line description of the business. */}

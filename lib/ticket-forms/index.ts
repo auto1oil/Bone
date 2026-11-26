@@ -18,12 +18,13 @@ import * as arise from './arise';
 import * as whitaker from './whitaker';
 import * as uhb from './uhb';
 import * as osm from './osm';
+import * as sunroc from './sunroc';
 
 const BUCKET = 'work-tickets';
 
 type Form = { draw: (p: Pen, d: FormData) => void; ROWS: number; PAGE?: [number, number] };
 const FORMS: Record<Exclude<TicketFormatKey, 'bone'>, Form> = {
-  custom_trucking: custom, arise, whitaker, uhb, osm,
+  custom_trucking: custom, arise, whitaker, uhb, osm, sunroc,
 };
 
 // Printed in yard time: the server builds this, and the server is on UTC.
