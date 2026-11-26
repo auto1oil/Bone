@@ -35,13 +35,14 @@ export async function startHaulTicket(
       db.from('profiles').select('full_name, email').eq('id', driverId).maybeSingle(),
       // The job's own address, so the ticket reads like the paper one: job
       // address is the site, pit address is where the trucks load. Only
-      // these two columns are read — the order's rates stay on the order.
+      // the addresses and the job's ticket form are used below — the
+      // order's rates stay on the order.
       load.order_id
-        ? db.from('job_orders').select('job_address, pickup_address').eq('id', load.order_id).maybeSingle()
+        ? db.from('job_orders').select('*').eq('id', load.order_id).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
     const named = driver as { full_name: string | null; email: string } | null;
-    const job = order as { job_address: string | null; pickup_address: string | null } | null;
+    const job = order as { job_address: string | null; pickup_address: string | null; ticket_format?: string | null } | null;
 
     const { data: wo, error } = await db
       .from('work_orders')
@@ -51,6 +52,8 @@ export async function startHaulTicket(
         hauler_id: load.hauler_id,
         hauler_load_id: load.id,
         order_id: load.order_id,
+        // The form the job's tickets print on.
+        ...(job?.ticket_format ? { ticket_format: job.ticket_format } : {}),
         trucking_company: (company as { name: string } | null)?.name ?? null,
         assigned_to: driverId,
         driver_name: named?.full_name || named?.email || actor.full_name || actor.email || null,

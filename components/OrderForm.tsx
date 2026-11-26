@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase-browser';
 import CustomerPicker from '@/components/CustomerPicker';
 import { ORDER_STATUSES, ORDER_STATUS_LABEL, type JobOrder } from '@/lib/job-orders';
+import { TICKET_FORMATS, ticketFormat } from '@/lib/ticket-formats';
 
 // Create or edit an order — the job everything else gets tied to.
 //
@@ -50,6 +51,7 @@ function toDraft(o: JobOrder | null): Draft {
     unit_number: v(o?.unit_number),
     status: (v(o?.status) === 'active' ? 'open' : v(o?.status)) || 'open',
     notes: v(o?.notes),
+    ticket_format: ticketFormat(o?.ticket_format),
   };
 }
 
@@ -110,6 +112,8 @@ export default function OrderForm({ order, template = null }: { order: JobOrder 
       unit_number: txt(draft.unit_number),
       status: draft.status,
       notes: txt(draft.notes),
+      ...(draft.ticket_format !== 'bone' || ticketFormat(order?.ticket_format) !== 'bone'
+        ? { ticket_format: draft.ticket_format === 'bone' ? null : draft.ticket_format } : {}),
     };
 
     const { data, error: err } = id
@@ -289,6 +293,11 @@ export default function OrderForm({ order, template = null }: { order: JobOrder 
           <label><span className={label}>Status</span>
             <select value={draft.status} onChange={(e) => set('status', e.target.value)} className={input}>
               {ORDER_STATUSES.filter((st) => st !== 'active').map((st) => <option key={st} value={st}>{ORDER_STATUS_LABEL[st]}</option>)}
+            </select>
+          </label>
+          <label><span className={label}>Ticket form for this job</span>
+            <select value={draft.ticket_format} onChange={(e) => set('ticket_format', e.target.value)} className={input}>
+              {TICKET_FORMATS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
             </select>
           </label>
         </div>

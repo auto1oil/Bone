@@ -78,8 +78,27 @@ Check in this order and report which one it was:
     `HT-<n>` (`ticketLabel`). `ticket_number` is the paper pad's own number.
   - **PDF**: the ticket page, then the BOL photos six to a page captioned
     "Load N – Ticket #…" (or the paper photos, one a page).
+  - **Ticket forms** (`lib/ticket-formats.ts`, `lib/ticket-forms/`): a
+    ticket prints on Bone's own layout or on a customer's form
+    (`work_orders.ticket_format`: custom_trucking, arise, whitaker, uhb, osm;
+    null = Bone). The order names the job's form (`job_orders.ticket_format`)
+    and it flows to the ticket on create, job pick and dispatch; the driver
+    or office can change it. Each form is one file exporting `ROWS` and
+    `draw(pen, data)` over the shared `kit.ts`; `drawCustomerForm` builds the
+    data and paginates. The format changes only the PDF, never hours or
+    billing. To add a form: a key in `TICKET_FORMATS`, a file, a line in
+    `lib/ticket-forms/index.ts`.
   - **Audit** (`components/AuditQueue.tsx`): `loadFlags` marks loads missing
     a time or a BOL photo, and typed times.
+  - **Approve only**: the audit and the ticket's office buttons can approve
+    without invoicing (`/approve` with `invoice: false`); the ticket keeps a
+    Send Invoice button (`/invoice` route) for later.
+  - **History** (`lib/ticket-events.ts`, `work_order_events`): every route
+    that changes a ticket logs a line (who, when, detail) with the service
+    role, best-effort. Read-only to office/admin and the ticket's submitter;
+    no client writes. Shown at `/work-orders/history` and on the ticket
+    (`components/TicketHistory.tsx`). Add a `logTicketEvent` call to any new
+    route that moves a ticket.
   - **Reminders** (`lib/ticket-reminders.ts`): `/api/cron/ticket-reminders`
     runs hourly; 6–11 PM yard time (America/Denver) every started open
     ticket gets a push, and at 6 AM the ones left overnight. The office's

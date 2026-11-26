@@ -231,16 +231,18 @@ export default function AuditQueue() {
   }
 
   // Approve straight from the verify panel — same route, one ticket.
-  async function approveOne(id: string) {
-    setBusy(true); setErrors([]); setNotices([]); setProgress('Sending…');
+  // only = approve and leave the invoice for later.
+  async function approveOne(id: string, only = false) {
+    setBusy(true); setErrors([]); setNotices([]); setProgress(only ? 'Approving…' : 'Sending…');
     try {
       const res = await fetch(`/api/work-orders/${id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ as: 'office' }),
+        body: JSON.stringify(only ? { as: 'office', invoice: false } : { as: 'office' }),
       });
       const json = await res.json();
       if (!json.ok) setErrors([`${shortName(id)}: ${json.error || 'failed'}`]);
+      else if (only) setNotices([`${shortName(id)}: approved. No invoice was made; send it from the Tickets list when billing is ready.`]);
       else if (json.invoice_error) setErrors([`${shortName(id)}: approved, but the invoice didn\u2019t go: ${json.invoice_error}`]);
       else {
         setNotices([invoiceNote(id, json)]);
@@ -495,6 +497,11 @@ export default function AuditQueue() {
             <button onClick={() => approveOne(w.id)} disabled={busy}
               className="px-4 py-2 text-sm rounded-md bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50">
               {busy ? (progress || 'Sending…') : 'Send Invoice'}
+            </button>
+            <button onClick={() => approveOne(w.id, true)} disabled={busy}
+              title="Approve the ticket now and invoice it later"
+              className="px-4 py-2 text-sm rounded-md border border-emerald-600 text-emerald-700 font-semibold hover:bg-emerald-50 disabled:opacity-50">
+              Approve only
             </button>
             <Link href={`/work-orders/${w.id}`} className="px-4 py-2 text-sm rounded-md border border-gray-300 hover:bg-gray-50">
               Needs an edit: open the ticket

@@ -7,10 +7,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendPushToUsers } from '@/lib/webpush';
 import { ticketLabel } from '@/lib/work-orders';
+import { YARD_TIME_ZONE } from '@/lib/yard-time';
 
 // The yard's clock. Reminder hours and "today" are read in this zone, not
 // the server's (UTC).
-export const YARD_TIME_ZONE = 'America/Denver';
+export { YARD_TIME_ZONE };
 
 export function yardNow(now = new Date()): { day: string; hour: number } {
   const parts = new Intl.DateTimeFormat('en-CA', {

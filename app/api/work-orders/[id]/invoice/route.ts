@@ -11,6 +11,7 @@ import { createAdminClient } from '@/lib/supabase-admin';
 import { invoiceWorkOrder } from '@/lib/work-orders';
 import { createTicketInvoice, quickbooksConnected } from '@/lib/invoices';
 import { invoiceLabel } from '@/lib/invoice-pdf';
+import { logTicketEvent } from '@/lib/ticket-events';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -21,7 +22,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, error: 'not signed in' }, { status: 401 });
 
-  const { data: actor } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+  const { data: actor } = await supabase.from('profiles').select('role, full_name, email').eq('id', user.id).single();
   if (!actor || !['office', 'admin', 'master_admin'].includes(actor.role)) {
     return NextResponse.json({ ok: false, error: 'office only' }, { status: 403 });
   }
@@ -29,7 +30,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const db = createAdminClient();
   const { data: wo } = await db
     .from('work_orders')
-    .select('id, status')
+    .select('id, status, ticket_no, job_name, job_number')
     .eq('id', params.id)
     .maybeSingle();
   if (!wo) return NextResponse.json({ ok: false, error: 'work order not found' }, { status: 404 });
@@ -37,12 +38,21 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ ok: false, error: 'approve the ticket before invoicing it' }, { status: 400 });
   }
 
+  const who = { id: user.id, name: actor.full_name || actor.email };
+  const ticket = wo as { id: string; ticket_no: number | null; job_name: string | null; job_number: string | null };
   if (await quickbooksConnected(db)) {
     const result = await invoiceWorkOrder(db, params.id);
+    if (result.body.ok) await logTicketEvent(db, ticket, 'invoiced', who, `QuickBooks #${result.body.invoice_number}`);
+    else await logTicketEvent(db, ticket, 'invoice_failed', who, String(result.body.error || ''));
     return NextResponse.json(result.body, { status: result.status });
   }
   const result = await createTicketInvoice(db, params.id, user.id);
-  if ('error' in result) return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
+  if ('error' in result) {
+    await logTicketEvent(db, ticket, 'invoice_failed', who, result.error);
+    return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
+  }
+  await logTicketEvent(db, ticket, 'invoiced', who,
+    `${invoiceLabel(result.invoice.invoice_no)}${result.emailed ? ` emailed to ${result.invoice.emailed_to}` : ' created, not emailed'}`);
   return NextResponse.json({
     ok: true, local: true,
     invoice_number: invoiceLabel(result.invoice.invoice_no),

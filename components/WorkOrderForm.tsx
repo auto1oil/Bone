@@ -18,6 +18,7 @@ import {
   type WorkOrder,
 } from '@/lib/work-orders';
 import { runsOn } from '@/lib/ticket-rules';
+import { TICKET_FORMATS, ticketFormat, ticketFormatInfo } from '@/lib/ticket-formats';
 
 // Today on the phone's own calendar — not UTC's, which is already tomorrow
 // by late afternoon in Utah.
@@ -252,6 +253,9 @@ export default function WorkOrderForm({
   // Paper copy: the driver ran a paper ticket and photographs it instead of
   // tapping times.
   const [paper, setPaper] = useState<boolean>(!!workOrder?.paper);
+  // Which company's ticket this prints on. The job can name it; the driver
+  // or the office can change it.
+  const [ticketForm, setTicketForm] = useState<string>(ticketFormat(workOrder?.ticket_format));
   const [viewPref, setViewPref] = useState<'driver' | 'full'>('full');
   const isCrew =!!me && (CREW_ROLES.includes(me.role) || !!me.hauler_id);
   const driverView = !!me && (isCrew ? true : viewPref === 'driver');
@@ -441,6 +445,9 @@ export default function WorkOrderForm({
 
   function body(): Record<string, unknown> {
     return {
+      // Sent only when it isn't the Bone ticket it started as.
+      ...(ticketForm !== 'bone' || ticketFormat(workOrder?.ticket_format) !== 'bone'
+        ? { ticket_format: ticketForm === 'bone' ? null : ticketForm } : {}),
       order_id: draft.order_id || null,
       business_id: draft.customer_id || null,
       customer_number: draft.customer_number.trim() || null,
@@ -601,6 +608,13 @@ export default function WorkOrderForm({
     } catch { /* it rides along on the next save */ }
   }
 
+  // Which company's ticket this is written on. Saves at once.
+  function pickForm(key: string) {
+    const k = ticketFormat(key);
+    setTicketForm(k);
+    quickSave({ ticket_format: k === 'bone' ? null : k });
+  }
+
   // Pick or change the job. It saves at once; the server checks the job is
   // open and running that day, and writes the job's facts onto the ticket.
   // Nothing already tapped is lost — times, loads and photos live on the
@@ -624,10 +638,11 @@ export default function WorkOrderForm({
     try {
       const res = await fetch(`/api/work-orders/${id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...body(), order_id: orderId || null }),
+        body: JSON.stringify({ ...body(), order_id: orderId || null, ticket_format: undefined }),
       });
       const json = await res.json();
       if (!json.ok) { setDraft(before); setError(json.error || 'Could not put the ticket on that job.'); return; }
+      setTicketForm(ticketFormat((json.work_order as WorkOrder).ticket_format));
       onSaved?.(json.work_order as WorkOrder);
       setMsg(orderId ? 'Job saved on the ticket.' : 'Job taken off the ticket.');
     } catch {
@@ -695,11 +710,13 @@ export default function WorkOrderForm({
     }
   }
 
-  async function approve(reject: boolean) {
+  // only = approve the ticket and leave the invoice for later (the billing
+  // isn't set up yet, or the office bills this customer some other way).
+  async function approve(reject: boolean, only = false) {
     if (!id) return;
     const reason = reject ? window.prompt('What needs fixing?')?.trim() : '';
     if (reject && !reason) return;
-    setBusy(reject ? 'reject' : 'approve'); setError(''); setMsg('');
+    setBusy(reject ? 'reject' : only ? 'approveonly' : 'approve'); setError(''); setMsg('');
     try {
       // Save any edits first so the office approves what's on screen.
       await fetch(`/api/work-orders/${id}`, {
@@ -710,7 +727,7 @@ export default function WorkOrderForm({
       const res = await fetch(`/api/work-orders/${id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ as: 'office', reject, reason }),
+        body: JSON.stringify(only ? { as: 'office', invoice: false } : { as: 'office', reject, reason }),
       });
       const json = await res.json();
       if (!json.ok) { setError(json.error || 'Could not record the approval.'); return; }
@@ -719,7 +736,7 @@ export default function WorkOrderForm({
         ? `Invoice ${json.invoice.invoice_number} emailed to ${json.invoice.emailed_to}.`
         : `Invoice ${json.invoice.invoice_number} created, not emailed. ${json.invoice.email_error || ''} Send it from the Invoices tab.`);
       else if (json.invoice) setMsg(`Approved and invoiced — QuickBooks #${json.invoice.invoice_number}.`);
-      else setMsg(reject ? 'Sent back to the crew.' : 'Approved.');
+      else setMsg(reject ? 'Sent back to the crew.' : only ? 'Approved. No invoice was made; send it from the ticket list when billing is ready.' : 'Approved.');
       onSaved?.(json.work_order as WorkOrder);
       router.refresh();
     } catch {
@@ -876,6 +893,14 @@ export default function WorkOrderForm({
               {busy === 'approve' ? 'Sending…' : 'Send Invoice'}
             </button>
             <button
+              onClick={() => approve(false, true)}
+              disabled={!!busy}
+              title="Approve the ticket now and invoice it later"
+              className="px-4 py-2 text-sm border border-emerald-600 text-emerald-700 rounded-md hover:bg-emerald-50 disabled:opacity-50 font-medium"
+            >
+              {busy === 'approveonly' ? 'Approving…' : 'Approve only'}
+            </button>
+            <button
               onClick={() => approve(true)}
               disabled={!!busy}
               className="px-4 py-2 text-sm border border-red-300 text-red-700 rounded-md hover:bg-red-50 disabled:opacity-50"
@@ -960,6 +985,17 @@ export default function WorkOrderForm({
               )}
             </label>
           )}
+          <label className="block mb-2">
+            <span className={label}>Ticket form</span>
+            <select value={ticketForm} onChange={(e) => pickForm(e.target.value)} disabled={locked} className={input}>
+              {TICKET_FORMATS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+            </select>
+            <span className="block mt-1 text-[11px] text-gray-500">
+              {ticketForm === 'bone'
+                ? 'The Bone ticket. If the customer wants this on their own form, pick it here.'
+                : `This ticket prints on the ${ticketFormatInfo(ticketForm).title} form.`}
+            </span>
+          </label>
           {headRow('Customer', customerName || draft.customer_number)}
           {headRow('Job', draft.job_name)}
           {headRow('Job #', [draft.job_number, draft.phase_code ? `Phase ${draft.phase_code}` : null].filter(Boolean).join(' · '))}
@@ -1223,6 +1259,11 @@ export default function WorkOrderForm({
           </label>
           <label><span className={label}>Ticket #</span>
             <input value={draft.ticket_number} onChange={(e) => set('ticket_number', e.target.value)} disabled={locked} className={input} />
+          </label>
+          <label><span className={label}>Ticket form</span>
+            <select value={ticketForm} onChange={(e) => setTicketForm(ticketFormat(e.target.value))} disabled={locked} className={input}>
+              {TICKET_FORMATS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+            </select>
           </label>
           <label><span className={label}>Carrier (trucking company)</span>
             <input value={draft.trucking_company} onChange={(e) => set('trucking_company', e.target.value)} disabled={locked} className={input} />

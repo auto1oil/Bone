@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { pickEditable, ORDER_LOCKED_FIELDS, stampSpan } from '@/lib/work-orders';
 import { loadOrder, jobPickProblem, jobFacts, noJobFacts, finishProblem, JOB_FACT_FIELDS } from '@/lib/ticket-rules';
+import { logTicketEvent } from '@/lib/ticket-events';
 import { withOrderMismatch } from '@/lib/order-match';
 import { requestBillOfSale, checkFactoringLink, sendTicketProgress } from '@/lib/factoring';
 import { runPlaceCheck } from '@/lib/place-check';
@@ -66,7 +67,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   // the form greys these fields out, and this strips them from anyone who
   // posts them anyway. The office editing the same ticket is not affected.
   const { data: actor } = await supabase
-    .from('profiles').select('role, hauler_id').eq('id', user.id).single();
+    .from('profiles').select('role, hauler_id, full_name, email').eq('id', user.id).single();
+  const who = { id: user.id, name: actor?.full_name || actor?.email || null };
   if (actor?.hauler_id && before && (before.order_id || before.hauler_load_id)) {
     for (const k of ORDER_LOCKED_FIELDS) delete patch[k];
     if (Object.keys(patch).length === 0) {
@@ -114,11 +116,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         const problem = jobPickProblem(order, (patch.job_date as string) || before.job_date);
         if (problem) return NextResponse.json({ ok: false, error: problem }, { status: 400 });
         Object.assign(patch, jobFacts(order!));
+        // The job can name the form its tickets print on.
+        if (order!.ticket_format) patch.ticket_format = order!.ticket_format;
       } else {
         Object.assign(patch, noJobFacts());
       }
     }
   }
+  let movedTo: string | null = null;
 
   // The office moving a ticket to a different job: it takes the new job's
   // facts with it (a lessor's ticket takes that job's pay rate, not the
@@ -131,6 +136,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (!order) return NextResponse.json({ ok: false, error: 'that order no longer exists' }, { status: 400 });
     Object.assign(patch, jobFacts(order));
     if (before.hauler_id) patch.rate = order.pay_rate;
+    if (order.ticket_format && !('ticket_format' in body)) patch.ticket_format = order.ticket_format;
+    if (before.order_id) movedTo = `to order #${order.order_number}${order.job_name ? ` · ${order.job_name}` : ''}`;
   }
 
   if (body.submit === true && !isOffice && before) {
@@ -201,6 +208,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       }, { status: 400 });
     }
   }
+
+  // The ticket's history. Best-effort, like the notice below.
+  if (body.submit === true && before && before.status !== 'submitted') {
+    await logTicketEvent(createAdminClient(), data, before.status === 'rejected' ? 'resubmitted' : 'finished', who);
+  }
+  if (movedTo) await logTicketEvent(createAdminClient(), data, 'moved_job', who, movedTo);
 
   // Tell the office a ticket is waiting. Best-effort: a failed notify must not
   // fail the submit.

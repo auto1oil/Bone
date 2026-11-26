@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { remindDriver, OPEN_TICKET_COLUMNS, type OpenTicket } from '@/lib/ticket-reminders';
+import { logTicketEvent } from '@/lib/ticket-events';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,7 +15,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, error: 'not signed in' }, { status: 401 });
-  const { data: me } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+  const { data: me } = await supabase.from('profiles').select('role, full_name, email').eq('id', user.id).single();
   if (!me || !['office', 'admin', 'master_admin'].includes(me.role)) {
     return NextResponse.json({ ok: false, error: 'office or admin only' }, { status: 403 });
   }
@@ -28,5 +29,6 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   }
   const sent = await remindDriver(db, t, { from: 'from the office' });
   if (!sent) return NextResponse.json({ ok: false, error: 'could not reach the driver' }, { status: 502 });
+  await logTicketEvent(db, t, 'reminded', { id: user.id, name: me.full_name || me.email });
   return NextResponse.json({ ok: true });
 }

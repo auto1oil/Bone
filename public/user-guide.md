@@ -162,6 +162,10 @@ Orders tab, then Create order, top right.
   **Minimum hours per ticket** makes a short day on an hourly job bill at
   least that many hours.
 - FSR, fuel surcharge, tonnage and type, equipment type, unit, status, notes.
+- **Ticket form for this job.** Leave it on Bone Trucking, or pick the
+  customer's own form: Custom Trucking & Transportation, Arise Trucking,
+  Whitaker Construction, Utah Home Building or One Source Materials. Every
+  ticket on the job then prints on that form (below, under Ticket forms).
 - **An order stays open until you close it.** Change its status to Complete
   when the job is done; nothing closes it for you.
 
@@ -233,6 +237,10 @@ Tickets tab. The bell shows how many are waiting.
 - **Needs an edit?** Tap **Needs an edit: open the ticket**, fix it in the
   full form, and send the invoice from there. **Send back to the driver**
   returns it with your reason.
+- **Approve only** approves the ticket without making an invoice. Use it
+  when billing for that customer isn't set up yet, or the invoice should go
+  later. The ticket moves to Approved and keeps a **Send Invoice** button, on
+  the Tickets list and on the ticket itself, for when you're ready.
 - **Several at once.** Tick the rows and tap **Audit & Send Invoice**; each
   ticket gets its own invoice. The running total is on the button.
 - Choose fields picks which columns the whole office sees.
@@ -288,6 +296,51 @@ Crew fills the ticket → Completed (waiting on office) → Office approves?
                                                                  → Paid on Bone's pay run,
                                                                    or by Auto 1 Funding if Factor Payment
 ```
+
+### Ticket history
+
+**Tickets, then History** is the permanent record of what the office did
+with every ticket: approved, sent back (with the reason typed), invoiced,
+invoice voided, sent to a driver, taken back, moved to another job, driver
+reminded. Each line has the ticket number, the job, who did it and when.
+
+- The tabs narrow it: Approved & sent back, Approved, Sent back, Invoices,
+  Everything. Search by ticket number, job, person or reason.
+- Tap a line to open the ticket. A line stays even if the ticket is later
+  deleted.
+- Each ticket also shows its own **History** at the top when you open it.
+- Lines are written by the app as things happen; nobody can edit or remove
+  them. Approvals from before the history existed are listed once the
+  backfill has been run; older send-backs are not, because the reason was
+  cleared when the driver fixed the ticket.
+
+### Ticket forms
+
+A ticket can print on Bone's own haul ticket or on a customer's form, laid
+out like that company's paper pad with its name at the top:
+
+| Form | Loads on one sheet |
+|---|---|
+| Bone Trucking | 28 |
+| Custom Trucking & Transportation LLC | 18 |
+| Arise Trucking | 16 |
+| Whitaker Construction | 31 |
+| Utah Home Building Company | 20 |
+| One Source Materials | 25 |
+
+- **Set it on the order** and every ticket on that job uses it. The driver
+  can also pick it at the top of the ticket (**Ticket form**), and the
+  office can change it on the full form.
+- The app fills in what it knows: date, driver, truck, carrier, customer,
+  job, pit, times, each load's times, ticket number and tons, totals, travel,
+  comments and both signatures. Boxes the app doesn't collect (trailer,
+  lunch, mileage, employee number) stay blank.
+- The number on the form is Bone's ticket number (HT-…), not the pad's
+  serial. A day with more loads than the form holds runs onto a second
+  sheet marked "continued".
+- The BOL photos follow the form in the PDF, same as on the Bone ticket.
+  The form only changes how the ticket prints; hours, billing and the audit
+  work the same.
 
 ### 5. Invoices
 
@@ -373,6 +426,12 @@ right) and allow them when the phone asks.
     has a Load in and an Unload out, and every load has its BOL photo. It
     tells you which one is missing. **Ticket PDF** gives you the ticket with
     every BOL photo behind it, to text or email.
+
+**Customer's own form.** Some customers want the day on their ticket, not
+Bone's. If the office set it on the job it's already chosen. If not, pick it
+under **Ticket form** at the top of the ticket: Custom Trucking, Arise,
+Whitaker, Utah Home Building or One Source Materials. You fill the ticket
+out exactly the same way; **Ticket PDF** prints it on that company's form.
 
 **Paper ticket instead.** If you ran a paper ticket that day, tap **Running a
 paper ticket today? Upload a photo of it instead**, on the start screen or

@@ -15,6 +15,10 @@
 
 import { PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, rgb } from 'pdf-lib';
 import { BRAND } from '@/lib/brand';
+import { ticketFormat } from '@/lib/ticket-formats';
+import { drawCustomerForm } from '@/lib/ticket-forms';
+import { safe } from '@/lib/ticket-forms/kit';
+import { yardClock, yardStamp } from '@/lib/yard-time';
 import { TRUCK_TYPES, MAX_LOADS } from '@/lib/truck-types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
@@ -28,21 +32,9 @@ const INK = rgb(0, 0, 0);
 const GRAY = rgb(0.85, 0.85, 0.85);
 const DIM = rgb(0.35, 0.35, 0.35);
 
-const fmtClock = (iso: string | null) => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  let h = d.getHours();
-  const mer = h >= 12 ? 'PM' : 'AM';
-  h = ((h + 11) % 12) + 1;
-  return `${h}:${String(d.getMinutes()).padStart(2, '0')} ${mer}`;
-};
-const fmtStamp = (iso: string | null) => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${fmtClock(iso)}`;
-};
+// Printed in yard time: the server builds this, and the server is on UTC.
+const fmtClock = yardClock;
+const fmtStamp = yardStamp;
 // A ticket's job_date is a plain YYYY-MM-DD; noon keeps the weekday right in
 // every timezone.
 const weekdayOf = (ymd: string | null): number | null => {
@@ -64,13 +56,36 @@ const DELIVERY_TERMS = (co: string) =>
   + `by movement of the delivery vehicle while accessing or egressing the location I have designated delivery. ${co} will pay lessor `
   + 'within 10 days of receiving payment from contractor.';
 
-// Build the PDF bytes for one ticket.
+// Build the PDF bytes for one ticket: the ticket page on the form the ticket
+// is set to print on — Bone's own pad, or the form of the company it was
+// hauled for — then the proof behind it (the BOL photos, or the paper).
 export async function buildTicketPdf(
   db: SupabaseClient,
   wo: WorkOrder,
   loads: WorkOrderLoad[],
 ): Promise<Uint8Array> {
+  // The standard fonts can't draw everything a phone can type (an emoji in a
+  // note would throw), so every string is cleaned before anything is drawn.
+  const clean = <T extends object>(o: T): T =>
+    Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'string' ? safe(v) : v])) as T;
+  wo = clean(wo);
+  loads = loads.map(clean);
+
   const doc = await PDFDocument.create();
+  const format = ticketFormat(wo.ticket_format);
+  if (format === 'bone') await drawBoneTicket(db, doc, wo, loads);
+  else await drawCustomerForm(db, doc, format, wo, loads);
+  await appendProof(db, doc, wo, loads);
+  return doc.save();
+}
+
+// Bone's own pad.
+async function drawBoneTicket(
+  db: SupabaseClient,
+  doc: PDFDocument,
+  wo: WorkOrder,
+  loads: WorkOrderLoad[],
+): Promise<void> {
   const page = doc.addPage([612, 792]); // US Letter
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -357,10 +372,18 @@ export async function buildTicketPdf(
 
   // ---- Footer line, as printed on the pads ----
   centered('WHITE - BILLING      YELLOW - TRUCK COPY', boxBottom + 5, 7.5, bold);
+}
 
-  // ---- Behind the ticket: the paper it was written on, or each load's BOL.
-  // A photo that can't be fetched or read is skipped — the ticket page is
-  // worth having on its own.
+// Behind the ticket, whatever form it's on: the paper it was written on, or
+// each load's BOL. A photo that can't be fetched or read is skipped — the
+// ticket page is worth having on its own.
+async function appendProof(
+  db: SupabaseClient,
+  doc: PDFDocument,
+  wo: WorkOrder,
+  loads: WorkOrderLoad[],
+): Promise<void> {
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const label = ticketLabel(wo);
   if (wo.paper) {
     for (const [i, p] of [wo.ticket_photo_path, wo.short_ticket_path].entries()) {
@@ -396,8 +419,6 @@ export async function buildTicketPdf(
       slot++;
     }
   }
-
-  return doc.save();
 }
 
 // A photo from the ticket bucket, embedded by what its bytes say it is (the

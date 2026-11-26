@@ -21,6 +21,7 @@ import { createAdminClient } from '@/lib/supabase-admin';
 import { invoiceWorkOrder, type WorkOrder } from '@/lib/work-orders';
 import { createTicketInvoice, quickbooksConnected } from '@/lib/invoices';
 import { invoiceLabel } from '@/lib/invoice-pdf';
+import { logTicketEvent } from '@/lib/ticket-events';
 import { sendTicketToFactoring, sendTicketProgress } from '@/lib/factoring';
 
 export const runtime = 'nodejs';
@@ -109,6 +110,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       .select('*')
       .single();
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+    await logTicketEvent(db, wo, 'sent_back', { id: user.id, name: actor.full_name || actor.email }, reason);
     await notify(db, wo, 'work_order_rejected', 'Ticket sent back', reason);
     // The funding app's preview shows it as sent back. Best-effort.
     await sendTicketProgress(db, wo.id);
@@ -151,6 +153,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .single();
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
 
+  const who = { id: user.id, name: (actor.full_name || actor.email) as string };
+  await logTicketEvent(db, wo, 'approved', who,
+    as === 'funder' ? 'funds approved' : as === 'contractor' ? 'contractor sign-off' : body.invoice === false ? 'approved only — invoice to follow' : null);
+
   // ---- Office approval invoices the customer in QuickBooks. ----
   let invoice: Record<string, unknown> | null = null;
   let invoiceError: string | null = null;
@@ -176,6 +182,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         email_error: result.email_error,
       };
     }
+  }
+
+  if (invoice) {
+    const inv = invoice as { invoice_number?: string; local?: boolean; emailed?: boolean; emailed_to?: string | null };
+    await logTicketEvent(db, wo, 'invoiced', who, inv.local
+      ? `${inv.invoice_number}${inv.emailed ? ` emailed to ${inv.emailed_to}` : ' created, not emailed'}`
+      : `QuickBooks #${inv.invoice_number}`);
+  } else if (invoiceError) {
+    await logTicketEvent(db, wo, 'invoice_failed', who, invoiceError);
   }
 
   // ---- A factor-marked ticket goes to the factoring app on approval. ----

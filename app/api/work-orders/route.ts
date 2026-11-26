@@ -111,6 +111,7 @@ export async function POST(req: Request) {
       const problem = jobPickProblem(order, day);
       if (problem) return NextResponse.json({ ok: false, error: problem }, { status: 400 });
       Object.assign(row, jobFacts(order!));
+      if (order!.ticket_format && !row.ticket_format) row.ticket_format = order!.ticket_format;
     } else {
       Object.assign(row, noJobFacts());
     }

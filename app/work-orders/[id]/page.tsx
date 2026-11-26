@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase-browser';
 import { STATUS_LABEL, STATUS_TONE, type WorkOrder, type WorkOrderStatus } from '@/lib/work-orders';
 import WorkOrderForm from '@/components/WorkOrderForm';
 import PlaceCheckPanel from '@/components/PlaceCheckPanel';
+import TicketHistory from '@/components/TicketHistory';
 import type { PlaceCheck } from '@/lib/place-check';
 
 // The office's view of one ticket: the same form the crew filled in, fully
@@ -119,6 +120,8 @@ export default function OfficeWorkOrderPage({ params }: { params: { id: string }
           ))}
         </div>
       )}
+
+      <TicketHistory workOrderId={wo.id} stamp={`${wo.status}|${wo.updated_at ?? ''}|${wo.invoice_no ?? ''}`} />
 
       <div className="mb-3">
         <PlaceCheckPanel

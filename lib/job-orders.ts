@@ -53,6 +53,8 @@ export type JobOrder = {
   down_hours: number | null;
   // Minimum hours an hourly job bills per ticket, however short the day.
   min_hours?: number | null;
+  // The form this job's tickets print on (lib/ticket-formats.ts).
+  ticket_format?: string | null;
   // What the CUSTOMER pays. Office only — haulers cannot read this table.
   rate: number | null;
   // What a hauler is paid on this job by default. Also office only.
@@ -78,7 +80,7 @@ export const ORDER_EDITABLE_FIELDS = [
   'business_id', 'customer_number', 'job_name', 'job_number', 'phase_code',
   'job_address', 'pickup_address', 'dropoff_address', 'start_date', 'end_date', 'start_time', 'stop_time',
   'travel_hours', 'down_hours', 'min_hours', 'rate', 'pay_rate', 'rate_unit', 'fuel_surcharge',
-  'fsr', 'tonnage', 'tonnage_type', 'equipment_type', 'unit_number', 'status', 'notes',
+  'fsr', 'tonnage', 'tonnage_type', 'equipment_type', 'unit_number', 'status', 'notes', 'ticket_format',
 ] as const;
 
 const ORDER_NUMERIC_FIELDS = new Set([

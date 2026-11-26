@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
 import type { TicketInvoice } from '@/lib/invoices';
+import { logTicketEvent } from '@/lib/ticket-events';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, error: 'not signed in' }, { status: 401 });
-  const { data: me } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+  const { data: me } = await supabase.from('profiles').select('role, full_name, email').eq('id', user.id).single();
   if (!me || !['admin', 'master_admin'].includes(me.role)) {
     return NextResponse.json({ ok: false, error: 'only an admin can void an invoice' }, { status: 403 });
   }
@@ -41,6 +42,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (invoice.work_order_id) {
     await db.from('work_orders').update({ status: 'office_approved', invoice_no: null })
       .eq('id', invoice.work_order_id).eq('invoice_no', invoice.invoice_no);
+    const { data: t } = await db.from('work_orders').select('id, ticket_no, job_name, job_number').eq('id', invoice.work_order_id).maybeSingle();
+    if (t) {
+      await logTicketEvent(db, t as { id: string; ticket_no: number | null; job_name: string | null; job_number: string | null },
+        'invoice_voided', { id: user.id, name: me.full_name || me.email }, `INV-${invoice.invoice_no}: ${reason}`);
+    }
   }
   return NextResponse.json({ ok: true, invoice: updated });
 }

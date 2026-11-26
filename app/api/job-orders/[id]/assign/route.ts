@@ -19,6 +19,7 @@ import { createAdminClient } from '@/lib/supabase-admin';
 import { sendPushToUsers } from '@/lib/webpush';
 import { ticketDefaultsFrom, type JobOrder } from '@/lib/job-orders';
 import { jobFacts } from '@/lib/ticket-rules';
+import { logTicketEvent } from '@/lib/ticket-events';
 import { withOrderMismatch } from '@/lib/order-match';
 
 export const runtime = 'nodejs';
@@ -149,15 +150,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       trucking_company: (last.trucking_company as string) || null,
       travel_hours: order.travel_hours ?? null,
       report_time: asTime(a.start_time) || sendStart,
+      ...(order.ticket_format ? { ticket_format: order.ticket_format } : {}),
       status: 'draft',
       submitted_by: p.id,
       assigned_to: p.id,
     });
 
     const finalRow = await withOrderMismatch(db, row, null);
-    const { data: wo, error } = await db.from('work_orders').insert(finalRow).select('id').single();
+    const { data: wo, error } = await db.from('work_orders').insert(finalRow).select('id, ticket_no, job_name, job_number').single();
     if (error || !wo) { skipped.push({ driver: name, reason: error?.message || 'could not make the ticket' }); continue; }
     sent.push({ driver: name, ticket_id: (wo as { id: string }).id });
+    await logTicketEvent(db, wo as { id: string; ticket_no: number | null; job_name: string | null; job_number: string | null },
+      'sent_to_driver', { id: me.id, name: me.full_name || me.email }, `${name} · ${jobDate}`);
     alreadyOn.add(p.id);
 
     // Tell them. Best-effort: the ticket is on their home screen either way.
@@ -189,13 +193,16 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
   const ticketId = new URL(req.url).searchParams.get('ticket') || '';
   const db = createAdminClient();
   const { data: wo } = await db.from('work_orders')
-    .select('id, order_id, status, assigned_to, job_name, job_number, job_date').eq('id', ticketId).maybeSingle();
-  const t = wo as { id: string; order_id: string | null; status: string; assigned_to: string | null; job_name: string | null; job_number: string | null; job_date: string | null } | null;
+    .select('id, order_id, status, assigned_to, job_name, job_number, job_date, ticket_no, driver_name').eq('id', ticketId).maybeSingle();
+  const t = wo as { id: string; order_id: string | null; status: string; assigned_to: string | null; job_name: string | null; job_number: string | null; job_date: string | null; ticket_no: number | null; driver_name: string | null } | null;
   if (!t || t.order_id !== params.id) return NextResponse.json({ ok: false, error: 'ticket not found on this order' }, { status: 404 });
   if (t.status !== 'draft') return NextResponse.json({ ok: false, error: 'that ticket is already in — open it instead' }, { status: 400 });
   const { count } = await db.from('work_order_loads').select('id', { count: 'exact', head: true }).eq('work_order_id', t.id);
   if ((count || 0) > 0) return NextResponse.json({ ok: false, error: 'the driver has already stamped loads on it' }, { status: 400 });
 
+  // Logged before the delete: the line keeps the ticket's number and job
+  // after the ticket itself is gone.
+  await logTicketEvent(db, t, 'taken_back', { id: me.id, name: me.full_name || me.email }, t.driver_name ? `from ${t.driver_name}` : null);
   const { error } = await db.from('work_orders').delete().eq('id', t.id);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
   if (t.assigned_to) {

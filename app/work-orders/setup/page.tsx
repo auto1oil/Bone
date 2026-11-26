@@ -154,6 +154,7 @@ export default function WorkOrderSetupPage() {
         tabs={[
           { href: '/work-orders', label: 'All tickets' },
           { href: '/work-orders/approve', label: 'Approve' },
+          { href: '/work-orders/history', label: 'History' },
           { href: '/work-orders/setup', label: 'Setup' },
         ]}
         roles={['office', 'admin', 'master_admin']}

@@ -106,6 +106,8 @@ export type WorkOrder = {
   report_time: string | null;
   // HT-<n>: the ticket's own number, from a sequence. Never typed.
   ticket_no: number | null;
+  // Which form the ticket prints on (lib/ticket-formats.ts); null = Bone's.
+  ticket_format: string | null;
   // Bone's own invoice number (INV-<n>) once one has been sent.
   invoice_no: number | null;
   // Paper copy: photos of a paper ticket plus typed totals, no stamps.
@@ -253,7 +255,7 @@ export const EDITABLE_FIELDS = [
   'signature_name', 'signature_signed_at',
   'foreman_signature_name', 'foreman_signature_signed_at',
   'start_at', 'stop_at', 'travel_hours', 'down_hours', 'extra_hours', 'report_time', 'rate', 'rate_unit',
-  'paper', 'paper_hours', 'paper_loads',
+  'paper', 'paper_hours', 'paper_loads', 'ticket_format',
   'tonnage', 'tonnage_type', 'ticket_photo_path', 'short_ticket_path',
   'signature_path', 'contractor_id', 'payment_method', 'notes',
 ] as const;

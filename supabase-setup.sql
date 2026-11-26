@@ -3428,3 +3428,43 @@ alter table public.ticket_invoices enable row level security;
 drop policy if exists "ticket invoices read" on public.ticket_invoices;
 create policy "ticket invoices read" on public.ticket_invoices for select to authenticated
   using (public.is_admin() or public.has_role(array['office']));
+
+
+-- ==========================================================================
+-- 52. Ticket forms and ticket history
+-- ==========================================================================
+-- Which form a ticket prints on: Bone's own pad (null / 'bone'), or the form
+-- of the company it was hauled for (lib/ticket-formats.ts). An order can
+-- name the form its tickets use; a ticket takes it when the job is picked.
+alter table public.work_orders add column if not exists ticket_format text;
+alter table public.job_orders  add column if not exists ticket_format text;
+
+-- A permanent record of what happened to each ticket and who did it: sent to
+-- a driver, finished, sent back (with the reason), approved, invoiced,
+-- voided, moved to another job. Written only by the server. The ticket's
+-- number and job are copied onto each line so the record still reads after a
+-- ticket is deleted.
+create table if not exists public.work_order_events (
+  id            uuid primary key default gen_random_uuid(),
+  work_order_id uuid references public.work_orders(id) on delete set null,
+  at            timestamptz not null default now(),
+  kind          text not null,
+  actor_id      uuid references public.profiles(id) on delete set null,
+  actor_name    text,
+  detail        text,
+  ticket_label  text,
+  job           text
+);
+create index if not exists work_order_events_ticket_idx on public.work_order_events (work_order_id, at);
+create index if not exists work_order_events_at_idx     on public.work_order_events (at desc);
+
+grant select on public.work_order_events to authenticated;
+alter table public.work_order_events enable row level security;
+-- Office and admin read everything; a crew member reads the history of
+-- their own tickets (it is how they see why one was sent back, and when).
+drop policy if exists "ticket events read" on public.work_order_events;
+create policy "ticket events read" on public.work_order_events for select to authenticated
+  using (
+    public.is_admin() or public.has_role(array['office'])
+    or work_order_id in (select id from public.work_orders where submitted_by = auth.uid())
+  );
