@@ -340,7 +340,7 @@ export default function AuditQueue() {
     const row = (k: string, v: React.ReactNode, off = false) => (
       <div key={k} className="flex justify-between gap-3 py-0.5">
         <dt className="text-gray-500 shrink-0">{k}</dt>
-        <dd className={`text-right ${off ? 'text-red-600 font-semibold' : 'text-gray-900'}`}>{v}{off ? ' ≠ order' : ''}</dd>
+        <dd className={`text-right min-w-0 [overflow-wrap:anywhere] ${off ? 'text-red-600 font-semibold' : 'text-gray-900'}`}>{v}{off ? ' ≠ order' : ''}</dd>
       </div>
     );
     const emailValue = bizId ? (emailDraft[bizId] ?? b?.email ?? '') : '';

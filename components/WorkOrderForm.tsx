@@ -926,7 +926,7 @@ export default function WorkOrderForm({
     ? new Date(`2000-01-01T${draft.report_time}:00`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
     : '';
   const headRow = (k: string, v: React.ReactNode) => (v ? (
-    <div className="grid grid-cols-[6.5rem_1fr] gap-2 py-0.5"><span className="text-gray-500">{k}</span><span className="text-gray-900">{v}</span></div>
+    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-2 py-0.5"><span className="text-gray-500">{k}</span><span className="text-gray-900 [overflow-wrap:anywhere]">{v}</span></div>
   ) : null);
   // Jobs running on the ticket's day, plus whichever one is already on it.
   const jobChoices = orders.filter((o) => o.id === draft.order_id || runsOn(o, draft.job_date));

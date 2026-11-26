@@ -118,9 +118,10 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
     ['Job #', order.job_number],
     ['Phase', order.phase_code],
     ['FSR', order.fsr],
-    ['Job address', <MapLink key="address" address={order.job_address} />],
-    ['Load address', <MapLink key="pickup" address={order.pickup_address} />],
-    ['Unload address', <MapLink key="dropoff" address={order.dropoff_address} />],
+    // An address that isn't filled in leaves its label out.
+    ['Job address', order.job_address?.trim() ? <MapLink key="address" address={order.job_address} /> : null],
+    ['Load address', order.pickup_address?.trim() ? <MapLink key="pickup" address={order.pickup_address} /> : null],
+    ['Unload address', order.dropoff_address?.trim() ? <MapLink key="dropoff" address={order.dropoff_address} /> : null],
     ['Runs', orderSpan(order)],
     ['Daily hours', order.start_time && order.stop_time ? `${order.start_time} – ${order.stop_time}` : null],
     ['Rate', order.rate != null ? `$${Number(order.rate).toFixed(2)}/${order.rate_unit || 'hr'}` : null],
@@ -163,9 +164,9 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">Agreed</h2>
         <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm">
           {facts.filter(([, v]) => v).map(([k, v]) => (
-            <div key={k}>
+            <div key={k} className="min-w-0">
               <dt className="text-xs text-gray-500">{k}</dt>
-              <dd>{v}</dd>
+              <dd className="[overflow-wrap:anywhere]">{v}</dd>
             </div>
           ))}
         </dl>

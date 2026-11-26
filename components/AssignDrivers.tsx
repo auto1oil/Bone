@@ -109,16 +109,18 @@ export default function AssignDrivers({
       <p className="text-xs text-gray-500 mb-3">
         Each driver you tick gets this job as a ticket on their home screen, already filled in, and a notification on their phone.
       </p>
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        <label className="text-xs text-gray-600">Day
-          <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className={`${sel} w-full mt-1`} />
+      {/* On a phone the day gets its own row: an iPhone's date and time
+          boxes won't shrink to a third of the card. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+        <label className="text-xs text-gray-600 min-w-0 col-span-2 sm:col-span-1">Day
+          <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className={`${sel} block w-full min-w-0 mt-1`} />
         </label>
-        <label className="text-xs text-gray-600">Start time
-          <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={`${sel} w-full mt-1`} />
+        <label className="text-xs text-gray-600 min-w-0">Start time
+          <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={`${sel} block w-full min-w-0 mt-1`} />
         </label>
-        <label className="text-xs text-gray-600">Travel time (hrs)
+        <label className="text-xs text-gray-600 min-w-0">Travel time (hrs)
           <input type="number" step="0.25" min="0" inputMode="decimal" value={travel} onChange={(e) => setTravel(e.target.value)}
-            placeholder="0" className={`${sel} w-full mt-1`} />
+            placeholder="0" className={`${sel} block w-full min-w-0 mt-1`} />
         </label>
       </div>
       <p className="text-[11px] text-gray-500 -mt-2 mb-3">
@@ -133,19 +135,19 @@ export default function AssignDrivers({
             const on = d.id in picked;
             const has = taken.has(d.id);
             return (
-              <div key={d.id} className={`flex items-center justify-between gap-2 px-3 py-2 ${has ? 'opacity-60' : ''}`}>
+              <div key={d.id} className={`flex flex-wrap items-center justify-between gap-2 px-3 py-2 ${has ? 'opacity-60' : ''}`}>
                 <label className="flex items-center gap-2 text-sm min-w-0">
                   <input type="checkbox" checked={on} disabled={has} onChange={() => toggle(d.id)} className="h-4 w-4" />
                   <span className="truncate">{d.full_name || d.email}</span>
                   {has && <span className="text-[11px] text-emerald-700 shrink-0">on it this day</span>}
                 </label>
                 {on && (
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1.5 min-w-0 max-w-full">
                     <input type="time" value={ownStart[d.id] ?? startTime}
                       onChange={(e) => setOwnStart((o) => ({ ...o, [d.id]: e.target.value }))}
                       title="This driver's start time" className={sel} />
                     {trucks.length > 0 && (
-                      <select value={picked[d.id]} onChange={(e) => setPicked((p) => ({ ...p, [d.id]: e.target.value }))} className={sel}>
+                      <select value={picked[d.id]} onChange={(e) => setPicked((p) => ({ ...p, [d.id]: e.target.value }))} className={`${sel} min-w-0 max-w-[11rem]`}>
                         <option value="">Usual truck</option>
                         {trucks.map((t) => <option key={t.id} value={t.id}>Unit {t.unit_number}{t.name ? ` · ${t.name}` : ''}</option>)}
                       </select>
